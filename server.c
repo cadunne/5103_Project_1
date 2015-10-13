@@ -33,6 +33,10 @@ typedef struct {
 struct sockaddr_in server;
 
 int thread_impl() {
+    
+    int clientsockfd;
+    struct sockaddr_in client;
+
     fprintf(stderr, "Thread\n");
     // Create sockaddr object for the server
     server.sin_family = AF_INET;
@@ -55,15 +59,28 @@ int thread_impl() {
     // Listen on port
     listen(sockfd, 5);
     
-    client_len = sizeof(client);    
+    int client_len = sizeof(client);    
 
     while (clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
     {
-       //create thread
+        // Create thread
+        pthread_t client_thread;
+        
+        if (pthread_create(&client_thread, NULL, handle_request, clientsockfd) < 0) {
+            fprintf(stderr, "Failed to create thread");
+        }
+        if (pthread_detach(&client_thread) < 0) {
+            fprintf(stderr, "Failed to detach thread.");
+        }
+
     }
 
     return 0;
 
+}
+
+int handle_request(int clientfd) {
+    
 }
 
 int polling_impl() {

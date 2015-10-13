@@ -1,0 +1,11 @@
+RUNNING Simple Testing Problem
+============================================================
+You will run your server and then run the test program provided 
+with follwing command.
+
+python cli.py #_of_thread data_size [ip] [port]
+
+- You can assume that the maximum # of threads is 10,000.
+- Data size can be looked, '~KB', '~MB', '10MB' will be maximum size of data.
+
+It will show the time elasped to complete for requests.
