@@ -1,5 +1,10 @@
 /**********************************/
 /****** CSCI 5103 Project 1 *******/
+/*** OS Support for Concurrency ***/
+/**********************************/
+/**** Connor Dunne // dunne065 ****/
+/***** Jane Kagan // kagan009 *****/
+/*** Karel Kalthoff // kalt0032 ***/
 /**********************************/
 
 #include <stdio.h>
@@ -32,12 +37,39 @@ typedef struct {
 
 struct sockaddr_in server;
 
+// Code the threads execute
+void *handle_request(void *cfd) {
+	char buffer[1000];
+	int readbytes; 
+	int clientfd = *((int*) cfd);
+
+  // Initial read
+	if (readbytes = read(clientfd, buffer, sizeof(buffer)) < 0) {
+		fprintf(stderr, "Read from client failed.\n");    
+	}
+	
+  // If there was something left to read, go back for more until none is left
+	while (readbytes > 0) {
+		if (readbytes = read(clientfd, buffer, sizeof(buffer)) < 0) {
+			fprintf(stderr, "Read from client failed.\n");
+		}
+	}
+ 
+  // Close socket
+	close(clientfd);
+	fprintf(stderr, "Request completed, client connection %d closed.\n", clientfd);
+ 
+  // Exit thread
+	pthread_exit(0);
+}
+
 int thread_impl() {
     
     int clientsockfd;
     struct sockaddr_in client;
 
-    fprintf(stderr, "Thread\n");
+    fprintf(stderr, "This server will use threads to service each new connection.\n");
+    
     // Create sockaddr object for the server
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
@@ -54,7 +86,7 @@ int thread_impl() {
 	exit(1);
     }
 
-    fprintf(stderr, "Opened socket and bound to port %d.\n");
+    fprintf(stderr, "Opened socket and bound to port %d.\n", port);
     
     // Listen on port
     listen(sockfd, 5);
@@ -63,24 +95,27 @@ int thread_impl() {
 
     while (clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
     {
-        // Create thread
+        // Create thread object
         pthread_t client_thread;
         
-        if (pthread_create(&client_thread, NULL, handle_request, clientsockfd) < 0) {
-            fprintf(stderr, "Failed to create thread");
+        // Allocate thread arguments
+        int *thread_arg = malloc(sizeof(*thread_arg));
+        *thread_arg = clientsockfd;
+        
+        // Create and detach threads
+        if (pthread_create(&client_thread, NULL, &handle_request, thread_arg) < 0) {
+            fprintf(stderr, "Failed to create thread\n");
         }
-        if (pthread_detach(&client_thread) < 0) {
-            fprintf(stderr, "Failed to detach thread.");
+        if (pthread_detach(client_thread) < 0) {
+            fprintf(stderr, "Failed to detach thread.\n");
         }
+	
+        fprintf(stderr, "Detached thread.\n");
 
     }
 
     return 0;
 
-}
-
-int handle_request(int clientfd) {
-    
 }
 
 int polling_impl() {
@@ -195,7 +230,7 @@ int handleConnectionMethod(int socketNum, fd_set *fds){
 
 
 
-
+    return 0;
 
 }
 
@@ -257,8 +292,6 @@ int main(int argc, char **argv) {
     }
     
     port = atoi(argv[2]);
-    
-    fprintf(stderr, "Port: %d\n", port);
 
     if (strcmp(argv[1], "thread") == 0) {
        thread_impl();
