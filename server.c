@@ -143,7 +143,7 @@ int polling_impl() {
     return 0;
 }
 
-int handleConnectionMethod(){
+int handleConnectionMethod(int socketNum, fd_set *fds){
     //Precondition: everything "set up" in FD_Set, stable state of connections
     //still pseudocode
     //MAKE GLOBAL FDSET called gFD_SET
@@ -202,6 +202,49 @@ int handleConnectionMethod(){
 
 
 int select_impl() {
+
+    fd_set fds;
+    int i, maxSocket, ready, newClient;
+
+    FD_ZERO(&fds);
+    FD_SET(sockfd, &fds);
+    maxSocket = sockfd + 1;
+
+    while(TRUE) {
+        //No time out for now
+        ready = select(maxSocket, &fds, NULL, NULL, NULL);
+
+        if (ready < 0) {
+            fprintf(stderr, "Error in Select()\n", NULL);
+        } 
+
+        //Accept new connection and add to fd_set
+        if(FD_ISSET(sockfd, &fds)) {
+            newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
+            FD_SET(newClient, &fds);
+            if((newClient + 1) > maxSocket) {
+                maxSocket = newClient + 1;
+            }
+        }
+
+        for(i = 0; i<maxSocket; i++) {
+            if(FD_ISSET( i, &fds) {
+                //Accept new connection and add to fd_set
+                if(i == sockfd){
+                    newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
+                    FD_SET(newClient, &fds);
+                    if((newClient + 1) > maxSocket) {
+                        maxSocket = newClient + 1;
+                    }
+                } else{
+                    //Handle client data
+                    handleConnectionMethod(i, &fds)
+                }
+            })
+        }
+
+    }
+
     fprintf(stderr, "Select\n");
     return 0;
 }
