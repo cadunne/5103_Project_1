@@ -178,7 +178,7 @@ int polling_impl() {
     return 0;
 }
 
-int handleConnectionMethod(int socketNum, fd_set *fds){
+int handleConnectionMethod(){
     //Precondition: everything "set up" in FD_Set, stable state of connections
     //still pseudocode
     //MAKE GLOBAL FDSET called gFD_SET
@@ -235,11 +235,31 @@ int handleConnectionMethod(int socketNum, fd_set *fds){
 }
 
 
-
+//Connor - We can combine some of our code later on
 int select_impl() {
 
     fd_set fds;
-    int i, maxSocket, ready, newClient;
+    int i, maxSocket, ready, newClient, clientsockfd;
+
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(port);
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    // Open socket
+    if (sockfd < 0) 
+        fprintf(stderr, "Error opening socket.\n");
+
+    // Bind socket to port
+    if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        fprintf(stderr, "Error binding socket.\n");
+        exit(1);
+    }
+
+    fprintf(stderr, "Opened socket and bound to port %d.\n");
+
+    // Listen on port
+    listen(sockfd, 5);
 
     FD_ZERO(&fds);
     FD_SET(sockfd, &fds);
@@ -272,8 +292,10 @@ int select_impl() {
                         maxSocket = newClient + 1;
                     }
                 } else{
-                    //Handle client data
-                    handleConnectionMethod(i, &fds)
+                    clientAction = handle_client(i);
+                    //Will use clientAction in the future for determining
+                    //if a client is done or still has data
+                    FD_CLR(i, &fds);
                 }
             })
         }
@@ -281,6 +303,30 @@ int select_impl() {
     }
 
     fprintf(stderr, "Select\n");
+    return 0;
+}
+
+//For now, using a simple read all data from single client 
+//May alter in the future to allow for reading from multiple client at a time
+int handle_client(int clientsockfd) {
+    char buffer[1000];
+    int readbytes; 
+
+    // Initial read
+    if (readbytes = read(clientsockfd, buffer, sizeof(buffer)) < 0) {
+        fprintf(stderr, "Read from client failed.\n");    
+    }
+    
+    // If there was something left to read, go back for more until none is left
+    while (readbytes > 0) {
+        if (readbytes = read(clientsockfd, buffer, sizeof(buffer)) < 0) {
+            fprintf(stderr, "Read from client failed.\n");
+        }
+    }
+ 
+    // Close socket
+    close(clientsockfd);
+    fprintf(stderr, "Request completed, client connection %d closed.\n", clientfd);
     return 0;
 }
 
