@@ -23,98 +23,131 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <dirent.h>
+#include <sys/time.h>
 
 int aio_read;
 int port;
 int sockfd;
 
 typedef struct {
-    short		sin_family;
-    unsigned short	sin_port;
-    struct in_addr	sin_addr;
-    char		sin_zero[8];
+   	short		sin_family;
+    	unsigned short	sin_port;
+	struct in_addr	sin_addr;
+   	char		sin_zero[8];
 } sockaddr_in;
+
+typedef struct {
+	int clientfd;
+	int threadnum;
+	struct timeval timer;
+} threadarg;
 
 struct sockaddr_in server;
 
+struct timeval start;
+float total;
+
 // Code the threads execute
-void *handle_request(void *cfd) {
+void *handle_request(void *arg) {
 	char buffer[1000];
 	int readbytes; 
-	int clientfd = *((int*) cfd);
+	threadarg myarg;
+	myarg = *((threadarg*) arg);
+	int clientfd = myarg.clientfd;
+	int i = myarg.threadnum;
+	struct timeval endtime;
+	struct timeval starttime = myarg.timer;
 
-  // Initial read
+  	// Initial read
 	if (readbytes = read(clientfd, buffer, sizeof(buffer)) < 0) {
 		fprintf(stderr, "Read from client failed.\n");    
 	}
 	
-  // If there was something left to read, go back for more until none is left
+  	// If there was something left to read, go back for more until none is left
 	while (readbytes > 0) {
 		if (readbytes = read(clientfd, buffer, sizeof(buffer)) < 0) {
 			fprintf(stderr, "Read from client failed.\n");
 		}
+		fprintf(stderr, "Loop read, read %d bytes\n", readbytes);
 	}
  
-  // Close socket
+  	// Close socket
 	close(clientfd);
-	fprintf(stderr, "Request completed, client connection %d closed.\n", clientfd);
- 
-  // Exit thread
+
+	// Stop timer
+	gettimeofday(&endtime, NULL);
+
+	fprintf(stderr, "Request completed by thread %d. Elapsed time: %d microseconds.\nClient connection %d closed.\n\n", i, (endtime.tv_usec - starttime.tv_usec), clientfd);
+
+
+  	// Exit thread
 	pthread_exit(0);
 }
 
 int thread_impl() {
     
-    int clientsockfd;
-    struct sockaddr_in client;
+   	int clientsockfd;
+   	struct sockaddr_in client;
+	int threadno = 0;
 
-    fprintf(stderr, "This server will use threads to service each new connection.\n");
+    	fprintf(stderr, "This server will use threads to service each new connection.\n");
     
-    // Create sockaddr object for the server
-    server.sin_family = AF_INET;
-    server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_port = htons(port);
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+   	// Create sockaddr object for the server
+    	server.sin_family = AF_INET;
+    	server.sin_addr.s_addr = INADDR_ANY;
+    	server.sin_port = htons(port);
+    	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-    // Open socket
-    if (sockfd < 0) 
-        fprintf(stderr, "Error opening socket.\n");
+    	// Open socket
+    	if (sockfd < 0) 
+        	fprintf(stderr, "Error opening socket.\n");
 
-    // Bind socket to port
-    if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) < 0) {
-        fprintf(stderr, "Error binding socket.\n");
-	exit(1);
-    }
+    	// Bind socket to port
+    	if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        	fprintf(stderr, "Error binding socket.\n");
+		exit(1);
+    	}	
 
-    fprintf(stderr, "Opened socket and bound to port %d.\n", port);
+    	fprintf(stderr, "Opened socket and bound to port %d.\n", port);
     
-    // Listen on port
-    listen(sockfd, 5);
+    	// Listen on port
+    	listen(sockfd, 5);
     
-    int client_len = sizeof(client);    
+  	int client_len = sizeof(client);    
 
-    while (clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
-    {
-        // Create thread object
-        pthread_t client_thread;
-        
-        // Allocate thread arguments
-        int *thread_arg = malloc(sizeof(*thread_arg));
-        *thread_arg = clientsockfd;
-        
-        // Create and detach threads
-        if (pthread_create(&client_thread, NULL, &handle_request, thread_arg) < 0) {
-            fprintf(stderr, "Failed to create thread\n");
-        }
-        if (pthread_detach(client_thread) < 0) {
-            fprintf(stderr, "Failed to detach thread.\n");
-        }
-	
-        fprintf(stderr, "Detached thread.\n");
+    	while (clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
+    	{
+		// Create thread's timer
+		struct timeval thread_timer;
+		gettimeofday(&thread_timer, NULL);
 
-    }
+		if (threadno == 0) {
+			gettimeofday(&start, NULL);
+		}
 
-    return 0;
+        	// Create thread object
+        	pthread_t client_thread;        
+
+        	// Allocate thread arguments
+		threadarg *thread_arg = malloc(sizeof(*thread_arg));
+		thread_arg->clientfd = clientsockfd;
+		thread_arg->threadnum = threadno;
+		thread_arg->timer = thread_timer;        
+
+        	// Create and detach threads
+        	if (pthread_create(&client_thread, NULL, &handle_request, thread_arg) < 0) {
+            		fprintf(stderr, "Failed to create thread\n");
+       	 	}
+
+        	if (pthread_detach(client_thread) < 0) {
+            		fprintf(stderr, "Failed to detach thread.\n");
+        	}
+
+		threadno++;
+
+    	}
+
+	return 0;
 
 }
 
