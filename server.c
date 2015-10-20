@@ -47,28 +47,31 @@ struct sockaddr_in server;
 struct timeval start;
 float total;
 
-// Code the threads execute
+// Function that the threads execute
 void *handle_request(void *arg) {
-	char buffer[1000];
+	
+	// 1KB Buffer to read into 
+	char buffer[1024];
 	int readbytes; 
 	threadarg myarg;
 	myarg = *((threadarg*) arg);
 	int clientfd = myarg.clientfd;
 	int i = myarg.threadnum;
+	
+	// Timing per thread
 	struct timeval endtime;
 	struct timeval starttime = myarg.timer;
 
   	// Initial read
-	if (readbytes = read(clientfd, buffer, sizeof(buffer)) < 0) {
-		fprintf(stderr, "Read from client failed.\n");    
+	if ((readbytes = read(clientfd, buffer, sizeof(buffer))) < 0) {
+		fprintf(stderr, "Read from client failed.\n");   	
 	}
 	
   	// If there was something left to read, go back for more until none is left
 	while (readbytes > 0) {
-		if (readbytes = read(clientfd, buffer, sizeof(buffer)) < 0) {
+		if ((readbytes = read(clientfd, buffer, sizeof(buffer))) < 0) {
 			fprintf(stderr, "Read from client failed.\n");
-		}
-		fprintf(stderr, "Loop read, read %d bytes\n", readbytes);
+		}	
 	}
  
   	// Close socket
@@ -77,7 +80,7 @@ void *handle_request(void *arg) {
 	// Stop timer
 	gettimeofday(&endtime, NULL);
 
-	fprintf(stderr, "Request completed by thread %d. Elapsed time: %d microseconds.\nClient connection %d closed.\n\n", i, (endtime.tv_usec - starttime.tv_usec), clientfd);
+	fprintf(stderr, "Request completed by thread %d.\n Elapsed time: %d microseconds.\nClient connection closed.\n\n", i, (endtime.tv_usec - starttime.tv_usec));
 
 
   	// Exit thread
@@ -120,10 +123,6 @@ int thread_impl() {
 		// Create thread's timer
 		struct timeval thread_timer;
 		gettimeofday(&thread_timer, NULL);
-
-		if (threadno == 0) {
-			gettimeofday(&start, NULL);
-		}
 
         	// Create thread object
         	pthread_t client_thread;        
