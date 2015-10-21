@@ -273,13 +273,18 @@ int select_impl() {
     int clientsockfd;
     struct sockaddr_in client;
     int threadno = 0;
-    fd_set fds;
+    fd_set readFDs;
+    fd_set masterFDs;
     int i, maxSocket, ready, newClient, clientAction;
 
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
     server.sin_port = htons(port);
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    struct timeval timeout;
+    timeout.tv_sec = 2;
+    timeout.tv_usec = 0;
 
     int client_len = sizeof(client); 
 
@@ -293,46 +298,53 @@ int select_impl() {
         exit(1);
     }
 
-    fprintf(stderr, "Opened socket and bound to port %d.\n");
+    fprintf(stderr, "Opened socket and bound to port %d.\n", server.sin_port);
 
     // Listen on port
     listen(sockfd, 5);
 
-    FD_ZERO(&fds);
-    FD_SET(sockfd, &fds);
+    FD_ZERO(&masterFDs);
+    FD_SET(sockfd, &masterFDs);
     maxSocket = sockfd + 1;
+
+    fprintf(stderr, "Main Socket == %d\n", sockfd);
 
     while(1) {
         //No time out for now
-        ready = select(maxSocket, &fds, NULL, NULL, NULL);
+        readFDs = masterFDs;
+
+        ready = select(maxSocket, &readFDs, NULL, NULL, NULL);
 
         if (ready < 0) {
             fprintf(stderr, "Error in Select()\n", NULL);
         } 
 
         //Accept new connection and add to fd_set
-        if(FD_ISSET(sockfd, &fds)) {
+        if(FD_ISSET(sockfd, &readFDs)) {
             newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
             FD_SET(newClient, &fds);
             if((newClient + 1) > maxSocket) {
                 maxSocket = newClient + 1;
+                fprintf(stderr, "Adding new client sockfd === %d\n", newClient);
             }
         }
 
         for(i = 0; i<maxSocket; i++) {
-            if(FD_ISSET( i, &fds)) {
+            if(FD_ISSET( i, &readFDs)) {
                 //Accept new connection and add to fd_set
                 if(i == sockfd){
                     newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
-                    FD_SET(newClient, &fds);
+                    FD_SET(newClient, &masterFDs);
                     if((newClient + 1) > maxSocket) {
                         maxSocket = newClient + 1;
                     }
+                    fprintf(stderr, "Adding new client sockfd ===== %d\n", newClient);
                 } else{
+                    fprintf(stderr, "Handling client : %d\n", i);
                     clientAction = handle_client(i);
                     //Will use clientAction in the future for determining
                     //if a client is done or still has data
-                    FD_CLR(i, &fds);
+                    FD_CLR(i, &masterFDs);
                 }
             }
         }
@@ -351,7 +363,7 @@ int handle_client(int clientsockfd) {
 
     // Initial read
     if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
-        fprintf(stderr, "Read from client failed.\n");    
+        fprintf(stderr, "Read from client failed.\n");  
     }
     
     // If there was something left to read, go back for more until none is left
