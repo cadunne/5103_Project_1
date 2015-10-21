@@ -191,16 +191,16 @@ int polling_impl() {
         //    //create thread
         // }
 
-        while ((non-blocking)listen for clients to get connections)
-        {
-            //IF new client, do all adding, setup, etc
-                //change flags so it's non-blocking http://stackoverflow.com/questions/914463/in-c-how-to-make-a-file-descriptor-blocking
-                //For Karel: look at F_NOTIFY
-                //add to gFD_SET
+        // while ((non-blocking)listen for clients to get connections)
+        // {
+        //     //IF new client, do all adding, setup, etc
+        //         //change flags so it's non-blocking http://stackoverflow.com/questions/914463/in-c-how-to-make-a-file-descriptor-blocking
+        //         //For Karel: look at F_NOTIFY
+        //         //add to gFD_SET
 
 
-            //non-blocking call to handleConnectionMethod (different for each implementation)
-        }
+        //     //non-blocking call to handleConnectionMethod (different for each implementation)
+        // }
 
 
     }
@@ -270,13 +270,18 @@ int handleConnectionMethod(){
 //Connor - We can combine some of our code later on
 int select_impl() {
 
+    int clientsockfd;
+    struct sockaddr_in client;
+    int threadno = 0;
     fd_set fds;
-    int i, maxSocket, ready, newClient, clientsockfd;
+    int i, maxSocket, ready, newClient, clientAction;
 
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
     server.sin_port = htons(port);
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    int client_len = sizeof(client); 
 
     // Open socket
     if (sockfd < 0) 
@@ -297,7 +302,7 @@ int select_impl() {
     FD_SET(sockfd, &fds);
     maxSocket = sockfd + 1;
 
-    while(TRUE) {
+    while(1) {
         //No time out for now
         ready = select(maxSocket, &fds, NULL, NULL, NULL);
 
@@ -315,7 +320,7 @@ int select_impl() {
         }
 
         for(i = 0; i<maxSocket; i++) {
-            if(FD_ISSET( i, &fds) {
+            if(FD_ISSET( i, &fds)) {
                 //Accept new connection and add to fd_set
                 if(i == sockfd){
                     newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
@@ -329,7 +334,7 @@ int select_impl() {
                     //if a client is done or still has data
                     FD_CLR(i, &fds);
                 }
-            })
+            }
         }
 
     }
@@ -345,20 +350,20 @@ int handle_client(int clientsockfd) {
     int readbytes; 
 
     // Initial read
-    if (readbytes = read(clientsockfd, buffer, sizeof(buffer)) < 0) {
+    if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
         fprintf(stderr, "Read from client failed.\n");    
     }
     
     // If there was something left to read, go back for more until none is left
     while (readbytes > 0) {
-        if (readbytes = read(clientsockfd, buffer, sizeof(buffer)) < 0) {
+        if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
             fprintf(stderr, "Read from client failed.\n");
         }
     }
  
     // Close socket
     close(clientsockfd);
-    fprintf(stderr, "Request completed, client connection %d closed.\n", clientfd);
+    fprintf(stderr, "Request completed, client connection %d closed.\n", clientsockfd);
     return 0;
 }
 
