@@ -159,10 +159,6 @@ int polling_impl() {
     int fd;
     struct aiocb aiocb;
 
-    #define BUF_SIZE 111
-    unsigned char buf[BUF_SIZE];
-    unsigned char check[BUF_SIZE];
-
     // int i, maxSocket, ready, newClient, clientAction;
 
     
@@ -192,7 +188,7 @@ int polling_impl() {
     listen(sockfd, 5);
 
 
-    //todo: make struct that knows when stuff is downloading, done, etc.
+    //TODO: Make cleanup/addition to aio_list better (can add to old areas)
 
 
     struct aiocb aio_list[100]; //TODO: Change in future
@@ -203,21 +199,27 @@ int polling_impl() {
 
     while(1) {
 
+        //STAGE 1: Accept / Connect if possible
         clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
         
         if(clientsockfd < 0){
             //nothing was there (or error)
         }
         else{
-            memset(check, 0xaa, BUF_SIZE);
-            memset(&aiocb, 0, sizeof(struct aiocb));
-            aiocb.aio_fildes = fd;
-            aiocb.aio_buf = check;
-            aiocb.aio_nbytes = BUF_SIZE;
-            // aiocb.aio_lio_opcode = LIO_WRITE;
+            //TODO: Figure out where to write to buffers
+            // memset(&aiocb, 0, sizeof(struct aiocb)); //or malloc .. ?
+
+            //TODO: How to know buff size needed on accept?
+            bufSize = 5;
+
+            aiocb.aio_fildes = clientsockfd;
+            aiocb.aio_buf = malloc(bufSize); //todo: replace with size of buff
+            aiocb.aio_nbytes = bufSize;
+            // aiocb.aio_lio_opcode = LIO_WRITE; //not sure if this is needed
+            //NOTE: these args are basically the same as read(fd, buf, count)
 
 
-            //add to my favorite struct
+            //add to the array
             aio_list[aio_count] = aiocb;
             aio_count++;
 
@@ -225,7 +227,7 @@ int polling_impl() {
             aio_read(aiocb);
         }
 
-        //rewrite
+        //STAGE 2: Iterate through aiocb's, see if any have completed
         for(i = 0; i < aio_count; i++){
             aiocb = aio_list[i];
             ssize_t aio_BUFF = aiocb.aio_nbytes;
@@ -242,41 +244,13 @@ int polling_impl() {
 
             else{
                 //read successfil and finished
+
                 //stop timer?
                 //cleanup
+                free(aiocb.aio_buf); //TODO: not sure if correct
+                close(aiocb.aio_fildes);
             }
         }
-
-
-        //Accept new connection and add to fd_set
-        if(FD_ISSET(sockfd, &fds)) {
-            newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
-            FD_SET(newClient, &fds);
-            if((newClient + 1) > maxSocket) {
-                maxSocket = newClient + 1;
-            }
-        }
-
-        for(i = 0; i<maxSocket; i++) {
-            if(FD_ISSET( i, &fds)) {
-                //Accept new connection and add to fd_set
-                if(i == sockfd){
-                    newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
-                    FD_SET(newClient, &fds);
-                    if((newClient + 1) > maxSocket) {
-                        maxSocket = newClient + 1;
-                    }
-                } else{
-                    clientAction = handle_client(i);
-                    //Will use clientAction in the future for determining
-                    //if a client is done or still has data
-                    FD_CLR(i, &fds);
-                }
-            }
-        }
-
-    else {
-
     }
     return 0;
 }
