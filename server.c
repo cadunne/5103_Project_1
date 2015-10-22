@@ -2,7 +2,7 @@
 /****** CSCI 5103 Project 1 *******/
 /*** OS Support for Concurrency ***/
 /**********************************/
-/**** Connor Dunne // dunne065 ****/
+/**** Connor Dunne // dunne064 ****/
 /***** Jane Kagan // kagan009 *****/
 /*** Karel Kalthoff // kalt0032 ***/
 /**********************************/
@@ -151,120 +151,136 @@ int thread_impl() {
 }
 
 int polling_impl() {
-    fprintf(stderr, "Polling\n");
-    if (aio_read) {
 
+    int clientsockfd;
+    struct sockaddr_in client;
+    int threadno = 0;
+    fd_set fds;
+    int fd;
+    struct aiocb aiocb;
 
-//         The server will handle all I/O operations (connections and receiving data) with a single thread using
-// asynchronous I/O and polling. When a new connection is accepted, the server will store the socket
-// descriptor (in a data-structure of your choice) and then issue an asynchronous read from the socket:
-// a) Using aio_read which will return immediately. To see whether the read operation is done or
-// not for each socket descriptor, the server will keep checking them one by one by polling.
-// b) Using read but with control flags set to make it asynchronous (see fnctl) which will return
-// immediately. This is the older Unix style
+    #define BUF_SIZE 111
+    unsigned char buf[BUF_SIZE];
+    unsigned char check[BUF_SIZE];
 
+    // int i, maxSocket, ready, newClient, clientAction;
 
-        //Listen for all clients (or, one at a time?)
+    
 
-        // 
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(port);
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-        server.sin_family = AF_INET;
-        server.sin_addr.s_addr = INADDR_ANY;
-        server.sin_port = htons(port);
-        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    fcntl(sockfd, F_SetFL, O_NONBLOCK); //try to make it non-blocking?
 
-        // Open socket
-        if (sockfd < 0) 
-            fprintf(stderr, "Error opening socket.\n");
+    int client_len = sizeof(client); 
 
-        // Bind socket to port
-        if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) < 0) {
-            fprintf(stderr, "Error binding socket.\n");
+    // Open socket
+    if (sockfd < 0) 
+        fprintf(stderr, "Error opening socket.\n");
+
+    // Bind socket to port
+    if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        fprintf(stderr, "Error binding socket.\n");
         exit(1);
+    }
+
+    fprintf(stderr, "Opened socket and bound to port %d.\n");
+
+    // Listen on port
+    listen(sockfd, 5);
+
+
+    //todo: make struct that knows when stuff is downloading, done, etc.
+
+
+    struct aiocb aio_list[100]; //TODO: Change in future
+    int aio_count = 0;
+
+
+
+
+    while(1) {
+
+        clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
+        
+        if(clientsockfd < 0){
+            //nothing was there (or error)
+        }
+        else{
+            memset(check, 0xaa, BUF_SIZE);
+            memset(&aiocb, 0, sizeof(struct aiocb));
+            aiocb.aio_fildes = fd;
+            aiocb.aio_buf = check;
+            aiocb.aio_nbytes = BUF_SIZE;
+            // aiocb.aio_lio_opcode = LIO_WRITE;
+
+
+            //add to my favorite struct
+            aio_list[aio_count] = aiocb;
+            aio_count++;
+
+            //start download
+            aio_read(aiocb);
         }
 
-        fprintf(stderr, "Opened socket and bound to port %d.\n");
+        //rewrite
+        for(i = 0; i < aio_count; i++){
+            aiocb = aio_list[i];
+            ssize_t aio_BUFF = aiocb.aio_nbytes;
+            err = aio_error(&aiocb);
+            ret = aio_return(&aiocb);
+
+            if (err != 0) {
+              printf ("Error at aio_error() : %s\n", strerror (err));
+            }
+
+            else if (ret != aio_BUFF) {
+              printf("Error at aio_return()\n");
+            }
+
+            else{
+                //read successfil and finished
+                //stop timer?
+                //cleanup
+            }
+        }
 
 
-        // while (clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
-        // {
-        //    //create thread
-        // }
+        //Accept new connection and add to fd_set
+        if(FD_ISSET(sockfd, &fds)) {
+            newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
+            FD_SET(newClient, &fds);
+            if((newClient + 1) > maxSocket) {
+                maxSocket = newClient + 1;
+            }
+        }
 
-        // while ((non-blocking)listen for clients to get connections)
-        // {
-        //     //IF new client, do all adding, setup, etc
-        //         //change flags so it's non-blocking http://stackoverflow.com/questions/914463/in-c-how-to-make-a-file-descriptor-blocking
-        //         //For Karel: look at F_NOTIFY
-        //         //add to gFD_SET
+        for(i = 0; i<maxSocket; i++) {
+            if(FD_ISSET( i, &fds)) {
+                //Accept new connection and add to fd_set
+                if(i == sockfd){
+                    newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
+                    FD_SET(newClient, &fds);
+                    if((newClient + 1) > maxSocket) {
+                        maxSocket = newClient + 1;
+                    }
+                } else{
+                    clientAction = handle_client(i);
+                    //Will use clientAction in the future for determining
+                    //if a client is done or still has data
+                    FD_CLR(i, &fds);
+                }
+            }
+        }
 
-
-        //     //non-blocking call to handleConnectionMethod (different for each implementation)
-        // }
-
-
-    }
     else {
 
     }
     return 0;
 }
 
-int handleConnectionMethod(){
-    //Precondition: everything "set up" in FD_Set, stable state of connections
-    //still pseudocode
-    //MAKE GLOBAL FDSET called gFD_SET
-
-    //QUESTION: Are we running multiple reads at once, or one at a time? e.g. select -> read, select -> read
-
-
-    //CASE 1: bFD_SET is full of fd's, and we want to select 1 to run. No others are running
-        //ASSUMPTION: fd is non-blocking
-        //"select" fd to run from array, somehow (example: fd_set[0])
-        //call "read" on "current_fd" (non-blocking)
-        //somehow "mark" what fd is being read .. maybe have "states" within the fd_set ASK IN OFFICE HOURS
-
-    //Case 2: bFD_SET has one fd is reading, but not finished
-
-
-        //CHECK to see if currently reading anything
-        //IF WE ONLY DO ONE READ AT ONCE:
-            //Do nothing
-        //Otherwise:
-            //Look for next viable read, start 'reading' it.
-
-    //Case 3: bFD_SET has one complete fd, done reading, and everything else is not start
-        
-        //stop timer or something here
-        //Do all the cleanup from the FD
-            //Especially cleanup the buffer!
-            //Maybe print out the buffer .. or check it .... not sure
-
-        //clean up the fd_set in some way?
-
-
-//emphasis on maintaining the fd_set, making sure selection / deletion is done properly, etc.... could be a queue
-
-
-
-
-
-
-
-
-// The server will handle all I/O operations (connections and receiving data) with a single thread using
-// asynchronous I/O and polling. When a new connection is accepted, the server will store the socket
-// descriptor (in a data-structure of your choice) and then issue an asynchronous read from the socket:
-
-// b) Using read but with control flags set to make it asynchronous (see fnctl) which will return
-// immediately. This is the older Unix style
-
-
-
-
-    return 0;
-
-}
 
 
 //Connor - We can combine some of our code later on
