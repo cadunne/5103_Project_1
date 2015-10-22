@@ -275,7 +275,7 @@ int select_impl() {
     int threadno = 0;
     fd_set readFDs;
     fd_set masterFDs;
-    int i, maxSocket, ready, newClient, clientAction;
+    int i, j, maxSocket, ready, newClient, clientAction;
 
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
@@ -301,9 +301,10 @@ int select_impl() {
     fprintf(stderr, "Opened socket and bound to port %d.\n", server.sin_port);
 
     // Listen on port
-    listen(sockfd, 5);
+    listen(sockfd, 10);
 
     FD_ZERO(&masterFDs);
+    FD_ZERO(&readFDs);
     FD_SET(sockfd, &masterFDs);
     maxSocket = sockfd + 1;
 
@@ -322,6 +323,9 @@ int select_impl() {
         //Accept new connection and add to fd_set
         if(FD_ISSET(sockfd, &readFDs)) {
             newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
+            if(newClient == -1){
+                perror("Server error in accept");
+            }
             FD_SET(newClient, &fds);
             if((newClient + 1) > maxSocket) {
                 maxSocket = newClient + 1;
@@ -334,6 +338,9 @@ int select_impl() {
                 //Accept new connection and add to fd_set
                 if(i == sockfd){
                     newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
+                    if(newClient == -1){
+                        perror("Server error in accept");
+                    }
                     FD_SET(newClient, &masterFDs);
                     if((newClient + 1) > maxSocket) {
                         maxSocket = newClient + 1;
@@ -345,6 +352,16 @@ int select_impl() {
                     //Will use clientAction in the future for determining
                     //if a client is done or still has data
                     FD_CLR(i, &masterFDs);
+                }
+            } else {
+                for(j=0; j<maxSocket; j++){
+                    if(j!=sockfd && FD_ISSET(j, &masterFDs)) {
+                        fprintf(stderr, "Handling client in J LOOP: %d\n", j);
+                        clientAction = handle_client(i);
+                        //Will use clientAction in the future for determining
+                        //if a client is done or still has data
+                        FD_CLR(i, &masterFDs);
+                    }
                 }
             }
         }
@@ -374,7 +391,10 @@ int handle_client(int clientsockfd) {
     }
  
     // Close socket
-    close(clientsockfd);
+    int closeValue = close(clientsockfd);
+    if(closeValue == -1) {
+        perror("Error closing client socket:::: ");
+    }
     fprintf(stderr, "Request completed, client connection %d closed.\n", clientsockfd);
     return 0;
 }
