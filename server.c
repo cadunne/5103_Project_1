@@ -2,7 +2,7 @@
 /****** CSCI 5103 Project 1 *******/
 /*** OS Support for Concurrency ***/
 /**********************************/
-/**** Connor Dunne // dunne065 ****/
+/**** Connor Dunne // dunne064 ****/
 /***** Jane Kagan // kagan009 *****/
 /*** Karel Kalthoff // kalt0032 ***/
 /**********************************/
@@ -40,6 +40,7 @@ typedef struct {
 	int clientfd;
 	int threadnum;
 	struct timeval timer;
+	struct timeval orig_start;
 } threadarg;
 
 struct sockaddr_in server;
@@ -57,7 +58,8 @@ void *handle_request(void *arg) {
 	myarg = *((threadarg*) arg);
 	int clientfd = myarg.clientfd;
 	int i = myarg.threadnum;
-	
+	struct timeval first_start = myarg.orig_start;	
+
 	// Timing per thread
 	struct timeval endtime;
 	struct timeval starttime = myarg.timer;
@@ -82,7 +84,10 @@ void *handle_request(void *arg) {
 
 	fprintf(stderr, "Request completed by thread %d.\n Elapsed time: %d microseconds.\nClient connection closed.\n\n", i, (endtime.tv_usec - starttime.tv_usec));
 
-
+	if ((i+1) % 5 == 0) {
+		fprintf(stderr, "---------------\nTotal time so far at conclusion of thread %d: %d microseconds.\n---------------\n\n", i,  endtime.tv_usec - first_start.tv_usec);
+	}
+	
   	// Exit thread
 	pthread_exit(0);
 }
@@ -92,6 +97,7 @@ int thread_impl() {
    	int clientsockfd;
    	struct sockaddr_in client;
 	int threadno = 0;
+	struct timeval original_start;
 
     	fprintf(stderr, "This server will use threads to service each new connection.\n");
     
@@ -114,7 +120,7 @@ int thread_impl() {
     	fprintf(stderr, "Opened socket and bound to port %d.\n", port);
     
     	// Listen on port
-    	listen(sockfd, 5);
+    	listen(sockfd, 50);
     
   	int client_len = sizeof(client);    
 
@@ -124,6 +130,10 @@ int thread_impl() {
 		struct timeval thread_timer;
 		gettimeofday(&thread_timer, NULL);
 
+		if (threadno % 100 == 0) {
+			gettimeofday(&original_start, NULL);
+		}
+
         	// Create thread object
         	pthread_t client_thread;        
 
@@ -132,6 +142,7 @@ int thread_impl() {
 		thread_arg->clientfd = clientsockfd;
 		thread_arg->threadnum = threadno;
 		thread_arg->timer = thread_timer;        
+		thread_arg->orig_start = original_start;
 
         	// Create and detach threads
         	if (pthread_create(&client_thread, NULL, &handle_request, thread_arg) < 0) {
@@ -151,120 +162,108 @@ int thread_impl() {
 }
 
 int polling_impl() {
-    fprintf(stderr, "Polling\n");
-    if (aio_read) {
 
+    int clientsockfd;
+    struct sockaddr_in client;
+    int threadno = 0;
+    fd_set fds;
+    int fd;
+    struct aiocb aiocb;
 
-//         The server will handle all I/O operations (connections and receiving data) with a single thread using
-// asynchronous I/O and polling. When a new connection is accepted, the server will store the socket
-// descriptor (in a data-structure of your choice) and then issue an asynchronous read from the socket:
-// a) Using aio_read which will return immediately. To see whether the read operation is done or
-// not for each socket descriptor, the server will keep checking them one by one by polling.
-// b) Using read but with control flags set to make it asynchronous (see fnctl) which will return
-// immediately. This is the older Unix style
+    // int i, maxSocket, ready, newClient, clientAction;
 
+    
 
-        //Listen for all clients (or, one at a time?)
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(port);
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-        // 
+    fcntl(sockfd, F_SetFL, O_NONBLOCK); //try to make it non-blocking?
 
-        server.sin_family = AF_INET;
-        server.sin_addr.s_addr = INADDR_ANY;
-        server.sin_port = htons(port);
-        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    int client_len = sizeof(client); 
 
-        // Open socket
-        if (sockfd < 0) 
-            fprintf(stderr, "Error opening socket.\n");
+    // Open socket
+    if (sockfd < 0) 
+        fprintf(stderr, "Error opening socket.\n");
 
-        // Bind socket to port
-        if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) < 0) {
-            fprintf(stderr, "Error binding socket.\n");
+    // Bind socket to port
+    if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        fprintf(stderr, "Error binding socket.\n");
         exit(1);
+    }
+
+    fprintf(stderr, "Opened socket and bound to port %d.\n");
+
+    // Listen on port
+    listen(sockfd, 5);
+
+
+    //TODO: Make cleanup/addition to aio_list better (can add to old areas)
+
+
+    struct aiocb aio_list[100]; //TODO: Change in future
+    int aio_count = 0;
+
+
+    while(1) {
+
+        //STAGE 1: Accept / Connect if possible
+        clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
+        
+        if(clientsockfd < 0){
+            //nothing was there (or error)
+        }
+        else{
+            //TODO: Figure out where to write to buffers
+            // memset(&aiocb, 0, sizeof(struct aiocb)); //or malloc .. ?
+
+            //TODO: How to know buff size needed on accept?
+            bufSize = 5;
+
+            aiocb.aio_fildes = clientsockfd;
+            aiocb.aio_buf = malloc(bufSize); //todo: replace with size of buff
+            aiocb.aio_nbytes = bufSize;
+            // aiocb.aio_lio_opcode = LIO_WRITE; //not sure if this is needed
+            //NOTE: these args are basically the same as read(fd, buf, count)
+
+
+            //add to the array
+            aio_list[aio_count] = aiocb;
+            aio_count++;
+
+            //start download
+            aio_read(aiocb);
         }
 
-        fprintf(stderr, "Opened socket and bound to port %d.\n");
+        //STAGE 2: Iterate through aiocb's, see if any have completed
+        for(i = 0; i < aio_count; i++){
+            aiocb = aio_list[i];
+            ssize_t aio_BUFF = aiocb.aio_nbytes;
+            err = aio_error(&aiocb);
+            ret = aio_return(&aiocb);
 
+            if (err != 0) {
+              printf ("Error at aio_error() : %s\n", strerror (err));
+            }
 
-        // while (clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
-        // {
-        //    //create thread
-        // }
+            else if (ret != aio_BUFF) {
+              printf("Error at aio_return()\n");
+            }
 
-        // while ((non-blocking)listen for clients to get connections)
-        // {
-        //     //IF new client, do all adding, setup, etc
-        //         //change flags so it's non-blocking http://stackoverflow.com/questions/914463/in-c-how-to-make-a-file-descriptor-blocking
-        //         //For Karel: look at F_NOTIFY
-        //         //add to gFD_SET
+            else{
+                //read successfil and finished
 
-
-        //     //non-blocking call to handleConnectionMethod (different for each implementation)
-        // }
-
-
-    }
-    else {
-
+                //stop timer?
+                //cleanup
+                free(aiocb.aio_buf); //TODO: not sure if correct
+                close(aiocb.aio_fildes);
+            }
+        }
     }
     return 0;
 }
 
-int handleConnectionMethod(){
-    //Precondition: everything "set up" in FD_Set, stable state of connections
-    //still pseudocode
-    //MAKE GLOBAL FDSET called gFD_SET
-
-    //QUESTION: Are we running multiple reads at once, or one at a time? e.g. select -> read, select -> read
-
-
-    //CASE 1: bFD_SET is full of fd's, and we want to select 1 to run. No others are running
-        //ASSUMPTION: fd is non-blocking
-        //"select" fd to run from array, somehow (example: fd_set[0])
-        //call "read" on "current_fd" (non-blocking)
-        //somehow "mark" what fd is being read .. maybe have "states" within the fd_set ASK IN OFFICE HOURS
-
-    //Case 2: bFD_SET has one fd is reading, but not finished
-
-
-        //CHECK to see if currently reading anything
-        //IF WE ONLY DO ONE READ AT ONCE:
-            //Do nothing
-        //Otherwise:
-            //Look for next viable read, start 'reading' it.
-
-    //Case 3: bFD_SET has one complete fd, done reading, and everything else is not start
-        
-        //stop timer or something here
-        //Do all the cleanup from the FD
-            //Especially cleanup the buffer!
-            //Maybe print out the buffer .. or check it .... not sure
-
-        //clean up the fd_set in some way?
-
-
-//emphasis on maintaining the fd_set, making sure selection / deletion is done properly, etc.... could be a queue
-
-
-
-
-
-
-
-
-// The server will handle all I/O operations (connections and receiving data) with a single thread using
-// asynchronous I/O and polling. When a new connection is accepted, the server will store the socket
-// descriptor (in a data-structure of your choice) and then issue an asynchronous read from the socket:
-
-// b) Using read but with control flags set to make it asynchronous (see fnctl) which will return
-// immediately. This is the older Unix style
-
-
-
-
-    return 0;
-
-}
 
 
 //Connor - We can combine some of our code later on
