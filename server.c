@@ -24,8 +24,9 @@
 #include <netinet/in.h>
 #include <dirent.h>
 #include <sys/time.h>
+#include <aio.h>
 
-int aio_read;
+int will_aio_read;
 int port;
 int sockfd;
 
@@ -169,6 +170,7 @@ int polling_impl() {
     fd_set fds;
     int fd;
     struct aiocb aiocb;
+    int i = 0;
 
     // int i, maxSocket, ready, newClient, clientAction;
 
@@ -179,7 +181,7 @@ int polling_impl() {
     server.sin_port = htons(port);
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-    fcntl(sockfd, F_SetFL, O_NONBLOCK); //try to make it non-blocking?
+    fcntl(sockfd, F_SETFD, O_NONBLOCK); //Needs testing
 
     int client_len = sizeof(client); 
 
@@ -209,7 +211,7 @@ int polling_impl() {
     while(1) {
 
         //STAGE 1: Accept / Connect if possible
-        clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
+        clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len);
         
         if(clientsockfd < 0){
             //nothing was there (or error)
@@ -219,7 +221,7 @@ int polling_impl() {
             // memset(&aiocb, 0, sizeof(struct aiocb)); //or malloc .. ?
 
             //TODO: How to know buff size needed on accept?
-            bufSize = 5;
+            ssize_t bufSize = 5;
 
             aiocb.aio_fildes = clientsockfd;
             aiocb.aio_buf = malloc(bufSize); //todo: replace with size of buff
@@ -233,15 +235,15 @@ int polling_impl() {
             aio_count++;
 
             //start download
-            aio_read(aiocb);
+            aio_read(&aiocb);
         }
 
         //STAGE 2: Iterate through aiocb's, see if any have completed
         for(i = 0; i < aio_count; i++){
             aiocb = aio_list[i];
             ssize_t aio_BUFF = aiocb.aio_nbytes;
-            err = aio_error(&aiocb);
-            ret = aio_return(&aiocb);
+            int err = aio_error(&aiocb);
+            int ret = aio_return(&aiocb);
 
             if (err != 0) {
               printf ("Error at aio_error() : %s\n", strerror (err));
@@ -379,11 +381,11 @@ int main(int argc, char **argv) {
        thread_impl();
     }
     else if (strcmp(argv[1], "polling_aio") == 0) {
-       aio_read = 1;
+       will_aio_read = 1;
        polling_impl();
     }
     else if (strcmp(argv[1], "polling_read") == 0) {
-       aio_read = 0;
+       will_aio_read = 0;
        polling_impl();
     }
     else {
