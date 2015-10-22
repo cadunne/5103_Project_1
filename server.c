@@ -40,6 +40,7 @@ typedef struct {
 	int clientfd;
 	int threadnum;
 	struct timeval timer;
+	struct timeval orig_start;
 } threadarg;
 
 struct sockaddr_in server;
@@ -57,7 +58,8 @@ void *handle_request(void *arg) {
 	myarg = *((threadarg*) arg);
 	int clientfd = myarg.clientfd;
 	int i = myarg.threadnum;
-	
+	struct timeval first_start = myarg.orig_start;	
+
 	// Timing per thread
 	struct timeval endtime;
 	struct timeval starttime = myarg.timer;
@@ -82,7 +84,10 @@ void *handle_request(void *arg) {
 
 	fprintf(stderr, "Request completed by thread %d.\n Elapsed time: %d microseconds.\nClient connection closed.\n\n", i, (endtime.tv_usec - starttime.tv_usec));
 
-
+	if ((i+1) % 5 == 0) {
+		fprintf(stderr, "---------------\nTotal time so far at conclusion of thread %d: %d microseconds.\n---------------\n\n", i,  endtime.tv_usec - first_start.tv_usec);
+	}
+	
   	// Exit thread
 	pthread_exit(0);
 }
@@ -92,6 +97,7 @@ int thread_impl() {
    	int clientsockfd;
    	struct sockaddr_in client;
 	int threadno = 0;
+	struct timeval original_start;
 
     	fprintf(stderr, "This server will use threads to service each new connection.\n");
     
@@ -114,7 +120,7 @@ int thread_impl() {
     	fprintf(stderr, "Opened socket and bound to port %d.\n", port);
     
     	// Listen on port
-    	listen(sockfd, 5);
+    	listen(sockfd, 50);
     
   	int client_len = sizeof(client);    
 
@@ -124,6 +130,10 @@ int thread_impl() {
 		struct timeval thread_timer;
 		gettimeofday(&thread_timer, NULL);
 
+		if (threadno % 100 == 0) {
+			gettimeofday(&original_start, NULL);
+		}
+
         	// Create thread object
         	pthread_t client_thread;        
 
@@ -132,6 +142,7 @@ int thread_impl() {
 		thread_arg->clientfd = clientsockfd;
 		thread_arg->threadnum = threadno;
 		thread_arg->timer = thread_timer;        
+		thread_arg->orig_start = original_start;
 
         	// Create and detach threads
         	if (pthread_create(&client_thread, NULL, &handle_request, thread_arg) < 0) {
@@ -151,7 +162,7 @@ int thread_impl() {
 }
 
 int polling_impl() {
-    fprintf(stderr, "Polling\n");
+/*    fprintf(stderr, "Polling\n");
     if (aio_read) {
 
 
@@ -207,7 +218,7 @@ int polling_impl() {
     else {
 
     }
-    return 0;
+  */  return 0;
 }
 
 int handleConnectionMethod(){
@@ -270,7 +281,7 @@ int handleConnectionMethod(){
 //Connor - We can combine some of our code later on
 int select_impl() {
 
-    int clientsockfd;
+   /* int clientsockfd;
     struct sockaddr_in client;
     int threadno = 0;
     fd_set fds;
@@ -340,7 +351,7 @@ int select_impl() {
     }
 
     fprintf(stderr, "Select\n");
-    return 0;
+   */ return 0;
 }
 
 //For now, using a simple read all data from single client 
