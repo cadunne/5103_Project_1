@@ -327,7 +327,7 @@ int select_impl() {
             if(newClient == -1){
                 perror("Server error in accept");
             }
-            FD_SET(newClient, &fds);
+            FD_SET(newClient, &masterFDs);
             if((newClient + 1) > maxSocket) {
                 maxSocket = newClient + 1;
                 fprintf(stderr, "Adding new client sockfd === %d\n", newClient);
