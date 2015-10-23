@@ -26,6 +26,8 @@
 #include <sys/time.h>
 #include <aio.h>
 
+#define BUF_SIZE 1024 
+
 int will_aio_read;
 int port;
 int sockfd;
@@ -53,7 +55,7 @@ float total;
 void *handle_request(void *arg) {
 	
 	// 1KB Buffer to read into 
-	char buffer[1024];
+	char buffer[BUF_SIZE];
 	int readbytes; 
 	threadarg myarg;
 	myarg = *((threadarg*) arg);
@@ -94,7 +96,7 @@ void *handle_request(void *arg) {
 }
 
 int thread_impl() {
-    
+
    	int clientsockfd;
    	struct sockaddr_in client;
 	int threadno = 0;
@@ -125,7 +127,7 @@ int thread_impl() {
     
   	int client_len = sizeof(client);    
 
-    	while (clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len))
+    	while ((clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *)&client_len)))
     	{
 		// Create thread's timer
 		struct timeval thread_timer;
@@ -172,9 +174,7 @@ int polling_impl() {
     struct aiocb aiocb;
     int i = 0;
 
-    // int i, maxSocket, ready, newClient, clientAction;
-
-    
+    char buffer[BUF_SIZE];
 
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
@@ -195,7 +195,7 @@ int polling_impl() {
         exit(1);
     }
 
-    fprintf(stderr, "Opened socket and bound to port %d.\n");
+    fprintf(stderr, "Opened socket and bound to port %d.\n", server.sin_port);
 
     // Listen on port
     listen(sockfd, 5);
@@ -211,22 +211,16 @@ int polling_impl() {
     while(1) {
 
         //STAGE 1: Accept / Connect if possible
-        clientsockfd = accept(sockfd, (struct sockaddr *) &client, &client_len);
+        clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *) &client_len);
         
         if(clientsockfd < 0){
             //nothing was there (or error)
         }
         else{
-            //TODO: Figure out where to write to buffers
-            // memset(&aiocb, 0, sizeof(struct aiocb)); //or malloc .. ?
-
-            //TODO: How to know buff size needed on accept?
-            ssize_t bufSize = 5;
-
+            //TODO: Figure out where to write to buffers ... or if this works currently
             aiocb.aio_fildes = clientsockfd;
-            aiocb.aio_buf = malloc(bufSize); //todo: replace with size of buff
-            aiocb.aio_nbytes = bufSize;
-            // aiocb.aio_lio_opcode = LIO_WRITE; //not sure if this is needed
+            aiocb.aio_buf = &buffer;
+            aiocb.aio_nbytes = BUF_SIZE;
             //NOTE: these args are basically the same as read(fd, buf, count)
 
 
@@ -323,7 +317,7 @@ int select_impl() {
 
         //Accept new connection and add to fd_set
         if(FD_ISSET(sockfd, &readFDs)) {
-            newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
+            newClient = accept(sockfd, (struct sockaddr *) &client, (socklen_t *)&client_len);
             if(newClient == -1){
                 perror("Server error in accept");
             }
@@ -338,7 +332,7 @@ int select_impl() {
             if(FD_ISSET( i, &readFDs)) {
                 //Accept new connection and add to fd_set
                 if(i == sockfd){
-                    newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
+                    newClient = accept(sockfd, (struct sockaddr *) &client, (socklen_t *)&client_len);
                     if(newClient == -1){
                         perror("Server error in accept");
                     }
