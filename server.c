@@ -358,7 +358,7 @@ int select_impl() {
             if(FD_ISSET( i, &readFDs)) {
                 if(i == sockfd){
                     //Accept new connection and add to fd_set
-                    newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
+                    newClient = accept(sockfd, (struct sockaddr *) &client, (socklen_t *) &client_len);
 
                     if(newClient == -1){
                         perror("Server error in accept");
@@ -369,10 +369,7 @@ int select_impl() {
                     }
                     fprintf(stderr, "Adding new client sockfd = %d\n", newClient);
                 } else{
-                    //fprintf(stderr, "Handling client: %d\n", i);
                     clientAction = handle_client(i);
-                    //Will use clientAction in the future for determining
-                    //if a client is done or still has data
                     if(clientAction == -1) {
                         FD_CLR(i, &readFDs);
                         FD_CLR(i, &masterFDs);
