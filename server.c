@@ -267,8 +267,35 @@ int polling_impl() {
 }
 
 
+int close_connection(int clientsockfd){
+    // Close socket
+    int closeValue = close(clientsockfd);
+    if(closeValue == -1) {
+        perror("Error closing client socket: ");
+    }
+    fprintf(stderr, "Request completed, client connection %d closed.\n", clientsockfd);
 
-//Connor - We can combine some of our code later on
+    return 0;
+}
+
+int handle_client(int clientsockfd) {
+    //Read data from client 1KB at a time
+    char buffer[1024];
+    int readbytes; 
+
+    // Initial read
+    if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
+        fprintf(stderr, "Read from client failed.\n");  
+    }
+
+    if (readbytes == 0) {
+        close_connection(clientsockfd);
+        return -1;
+    }
+
+    return 0;
+}
+
 int select_impl() {
 
     int clientsockfd;
@@ -299,7 +326,7 @@ int select_impl() {
         exit(1);
     }
 
-    fprintf(stderr, "Opened socket and bound to port %d.\n", server.sin_port);
+    fprintf(stderr, "Opened socket and bound to port %d.\n", port);
 
     // Listen on port
     listen(sockfd, 10);
@@ -309,35 +336,22 @@ int select_impl() {
     FD_SET(sockfd, &masterFDs);
     maxSocket = sockfd + 1;
 
-    fprintf(stderr, "Main Socket == %d\n", sockfd);
+    fprintf(stderr, "Main Socket = %d\n", sockfd);
 
     while(1) {
-        //No time out for now
+
         readFDs = masterFDs;
 
         ready = select(maxSocket, &readFDs, NULL, NULL, NULL);
 
         if (ready < 0) {
             fprintf(stderr, "Error in Select()\n", NULL);
-        } 
-
-        //Accept new connection and add to fd_set
-        if(FD_ISSET(sockfd, &readFDs)) {
-            newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
-            if(newClient == -1){
-                perror("Server error in accept");
-            }
-            FD_SET(newClient, &masterFDs);
-            if((newClient + 1) > maxSocket) {
-                maxSocket = newClient + 1;
-                fprintf(stderr, "Adding new client sockfd === %d\n", newClient);
-            }
         }
 
         for(i = 0; i<maxSocket; i++) {
             if(FD_ISSET( i, &readFDs)) {
-                //Accept new connection and add to fd_set
                 if(i == sockfd){
+                    //Accept new connection and add to fd_set
                     newClient = accept(sockfd, (struct sockaddr *) &client, &client_len);
                     if(newClient == -1){
                         perror("Server error in accept");
@@ -346,57 +360,22 @@ int select_impl() {
                     if((newClient + 1) > maxSocket) {
                         maxSocket = newClient + 1;
                     }
-                    fprintf(stderr, "Adding new client sockfd ===== %d\n", newClient);
+                    fprintf(stderr, "Adding new client sockfd = %d\n", newClient);
                 } else{
-                    fprintf(stderr, "Handling client : %d\n", i);
+                    //fprintf(stderr, "Handling client: %d\n", i);
                     clientAction = handle_client(i);
                     //Will use clientAction in the future for determining
                     //if a client is done or still has data
-                    FD_CLR(i, &masterFDs);
-                }
-            } else {
-                for(j=0; j<maxSocket; j++){
-                    if(j!=sockfd && FD_ISSET(j, &masterFDs)) {
-                        fprintf(stderr, "Handling client in J LOOP: %d\n", j);
-                        clientAction = handle_client(i);
-                        //Will use clientAction in the future for determining
-                        //if a client is done or still has data
+                    if(clientAction == -1) {
+                        FD_CLR(i, &readFDs);
                         FD_CLR(i, &masterFDs);
                     }
                 }
             }
         }
-
     }
 
     fprintf(stderr, "Select\n");
-    return 0;
-}
-
-//For now, using a simple read all data from single client 
-//May alter in the future to allow for reading from multiple client at a time
-int handle_client(int clientsockfd) {
-    char buffer[1000];
-    int readbytes; 
-
-    // Initial read
-    if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
-        fprintf(stderr, "Read from client failed.\n");  
-    }
-    
-    // If there was something left to read, go back for more until none is left
-    while (readbytes > 0) {
-        if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
-            fprintf(stderr, "Read from client failed.\n");
-        }
-    }
- 
-    // Close socket
-    int closeValue = close(clientsockfd);
-    if(closeValue == -1) {
-        perror("Error closing client socket:::: ");
-    }
-    fprintf(stderr, "Request completed, client connection %d closed.\n", clientsockfd);
     return 0;
 }
 
