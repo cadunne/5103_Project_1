@@ -252,7 +252,6 @@ int polling_impl() {
 
                 //stop timer?
                 //cleanup
-                free(aiocb.aio_buf); //TODO: not sure if correct
                 close(aiocb.aio_fildes);
             }
         }
