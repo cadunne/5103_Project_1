@@ -26,7 +26,7 @@
 #include <sys/time.h>
 #include <aio.h>
 
-#define BUF_SIZE 1024 
+#define BUF_SIZE 1024
 
 int will_aio_read;
 int port;
@@ -174,15 +174,12 @@ int polling_impl() {
     struct aiocb aiocb;
     int i = 0;
 
-    char buffer[BUF_SIZE];
-
-
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
     server.sin_port = htons(port);
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-    // fcntl(sockfd, F_SETFL, O_NONBLOCK); //Needs testing
+    fcntl(sockfd, F_SETFL, O_NONBLOCK); //Needs testing
 
     int client_len = sizeof(client); 
 
@@ -206,6 +203,10 @@ int polling_impl() {
 
 
     struct aiocb aio_list[100]; //TODO: Change in future
+    int completed[100];
+    for(i=0; i<100; i++){
+        completed[i] = 0;
+    }
     int aio_count = 0;
 
 
@@ -221,12 +222,12 @@ int polling_impl() {
             //TODO: Figure out where to write to buffers ... or if this works currently
 
 
-            memset(buffer, 0, BUF_SIZE);
+            char *buffer = (char *)calloc(BUF_SIZE, 1);
+            
             memset(&aiocb, 0, sizeof(struct aiocb));
             aiocb.aio_fildes = clientsockfd;
             aiocb.aio_buf = buffer;
             aiocb.aio_nbytes = BUF_SIZE;
-            aiocb.aio_lio_opcode = LIO_WRITE;
 
             //NOTE: these args are basically the same as read(fd, buf, count)
 
@@ -235,27 +236,40 @@ int polling_impl() {
             aio_count++;
 
             //start download
-            printf("Fildes: %d, Buff: %p, Buffsize: %zu\n", aiocb.aio_fildes, aiocb.aio_buf, aiocb.aio_nbytes);
-            if(aio_read(&aiocb) != 0) { printf("ERRROORRR2"); }
-            // if(read(aiocb.aio_fildes, aiocb.aio_buf, aiocb.aio_nbytes) != 0) { printf("ERRROORRR"); }
-            exit(0);
+            if(aio_read(&aiocb) != 0) { printf("Error with aio_read\n"); }
         }
 
         //STAGE 2: Iterate through aiocb's, see if any have completed
         for(i = 0; i < aio_count; i++){
             aiocb = aio_list[i];
+            if (completed[i] == 1){
+                //already completed
+                continue;
+            }
             
-            printf("Fildes: %d, Buff: %p, Buffsize: %zu\n", aiocb.aio_fildes, aiocb.aio_buf, aiocb.aio_nbytes);
+            printf("Fildes: %d, aio_count: %d, i: %d\n", aiocb.aio_fildes, aio_count, i);
 
             int err = aio_error(&aiocb);
             int ret = aio_return(&aiocb);
 
             if (err != 0) {
               printf ("Error at aio_error() : %s\n", strerror (err));
-              printf ("Error at aio_error() : %s\n", strerror (errno));
             }
-            else if (ret != aiocb.aio_nbytes) {
-              printf("Error at aio_return()\n");
+            
+            else if (err == EINPROGRESS){
+                //in progress, don't check return
+                printf("WIP\n");
+            }
+            
+
+            else if (ret < 0) {
+              printf("Error at aio_return() : %s\n", strerror(errno));
+              printf("##Ret val: %d, nbytes: %d\n", ret, aiocb.aio_nbytes);
+              exit(0); 
+            }
+            
+            else if (ret > 0) {
+                printf("Still reading ...\n");
             }
 
             else{
@@ -263,76 +277,15 @@ int polling_impl() {
 
                 //stop timer?
                 //cleanup
-                printf ("SUCCESS\n");
+                printf ("SUCCESS on %d\n", i);
                 close(aiocb.aio_fildes);
-
+                free((void*)aiocb.aio_buf);
+                completed[i] = 1;
             }
 
         }
     }
     return 0;
-}
-
-int test_aio_read(){
-    
-  char tmpfname[256];
-  #define BUF_SIZE 111
-  unsigned char buf[BUF_SIZE];
-  unsigned char check[BUF_SIZE];
-  int fd;
-  struct aiocb aiocb;
-  int i;
-
-
-  int clientsockfd;
-struct sockaddr_in client;
-int threadno = 0;
-struct timeval original_start;
-
-    fprintf(stderr, "This server will use threads to service each new connection.\n");
-
-    // Create sockaddr object for the server
-    server.sin_family = AF_INET;
-    server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_port = htons(port);
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-    // Open socket
-    if (sockfd < 0) 
-        fprintf(stderr, "Error opening socket.\n");
-
-    // Bind socket to port
-    if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) < 0) {
-        fprintf(stderr, "Error binding socket.\n");
-    exit(1);
-    }   
-
-    fprintf(stderr, "Opened socket and bound to port %d.\n", port);
-
-    // Listen on port
-    listen(sockfd, 50);
-
-    int client_len = sizeof(client);    
-
-    (clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *)&client_len));
-
-
-
-  memset(check, 0xaa, BUF_SIZE);
-  memset(&aiocb, 0, sizeof(struct aiocb));
-  aiocb.aio_fildes = clientsockfd;
-  aiocb.aio_buf = check;
-  aiocb.aio_nbytes = BUF_SIZE;
-  aiocb.aio_lio_opcode = LIO_WRITE;
-
-  if (aio_read(&aiocb) == -1) {
-    printf(" Error at aio_read(): %s\n",
-           strerror(errno));
-    exit(2);
-  }
-  else{
-    printf("SUCCESSSS");
-  }
 }
 
 
@@ -459,9 +412,9 @@ int main(int argc, char **argv) {
        thread_impl();
     }
     else if (strcmp(argv[1], "polling_aio") == 0) {
-        test_aio_read();
-       // will_aio_read = 1;
-       // polling_impl();
+
+        will_aio_read = 1;
+        polling_impl();
     }
     else if (strcmp(argv[1], "polling_read") == 0) {
        will_aio_read = 0;
