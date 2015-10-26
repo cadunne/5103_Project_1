@@ -17,8 +17,8 @@ EVERYONE:
 
 Connor:
 -keep organizing todos etc (this is a decent amount of work)
--get 10,000 clients working
 -Check if caesar works, follow up w/ Jane/Karel if not and make a new TODO
+-Finish 10k threads (waiting for Karel)
 
 Jane:
 -Fix timing (feel free to copy/paste some of Connor’s code)
@@ -37,7 +37,13 @@ Karel
 QUESTIONS:
 -Throughput ... is it just the average of each client's (bytes_read/time_to_finish)?
     -If not, what is it?
+    -Looks to be OK ... https://ay15.moodle.umn.edu/mod/forum/discuss.php?d=120175
     -In my code, I get way worse throughut for larger files, and way better for smaller. Compare 60clients 5MB to 60clients 5KB.
+-10,000 clients ... this seems to be a problem w/ cli.py opening too many files?
+    -How can we accommodate for this? I put a sleep(1) statement in my code to make the loop slow (only opens a couple ports), and cli.py still bugs out
+    -Might be a network thing ... when I run the client on an ssh, it bugs out much more than if not
+        -https://ay15.moodle.umn.edu/mod/forum/discuss.php?d=130438
+    -Do we need to rewrite cli.py, or parts of it?
     
     
 CHANGELOG:

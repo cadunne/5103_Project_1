@@ -27,7 +27,7 @@
 #include <aio.h>
 
 #define BUF_SIZE 1024
-#define AIO_LIST_SIZE 1024
+#define AIO_LIST_SIZE 1024 * 10
 
 int will_aio_read;
 int port;
@@ -317,7 +317,7 @@ int polling_impl_aio() {
                     total_time += timeDiff;
                     total_throughput += single_client_throughput;
                     
-                    printf("Client #%d took %ldusec to finish. Bytes read: %d. Throughput: %fMB/sec\n",
+                    printf("Client #%d took %ldusec. Bytes read: %d. Throughput: %fMB/s\n",
                         i, timeDiff, time_list[i].bytes_read, single_client_throughput);
                     printf("---Avg. time: %ldusec, Avg. throughput: %fMB/sec\n", total_time/total_finished, total_throughput/total_finished);
                 }
@@ -331,6 +331,7 @@ int polling_impl_read() {
 
     int clientsockfd;
     int client_len;
+    int socks_used = 0;
     struct sockaddr_in client;
     struct aiocb aiocb;
     struct aiocb *aiocbp;
@@ -384,15 +385,23 @@ int polling_impl_read() {
         }
     
     while(1) {
-    
         /////////////////////////////////STAGE 1: Accept / Connect / Read if possible///////////////////////////////////////////////////
         
-        clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *) &client_len);
+        //only spawn new sockets if we have some available (capping to 1000)
+        if(socks_used <= 1000){
+            clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *) &client_len);
+        }
+        else{
+            printf("Waiting for socks to open...\n");
+            clientsockfd = -1;
+        }
         
         if(clientsockfd < 0){
             //no new connections
         }
         else{
+            
+            socks_used++;
         
             int flags = fcntl(clientsockfd, F_GETFL, 0);
             fcntl(clientsockfd, F_SETFL,  flags | O_NONBLOCK);
@@ -459,6 +468,7 @@ int polling_impl_read() {
                 //cleanup:
                 close(aiocbp->aio_fildes);                    
                 completed[i] = 1;
+                socks_used--;
                 
                 //timing:
                 gettimeofday(&(time_list[i].end), NULL);
@@ -473,7 +483,7 @@ int polling_impl_read() {
                 total_time += timeDiff;
                 total_throughput += single_client_throughput;
                 
-                printf("Client #%d took %ldusec to finish. Bytes read: %d. Throughput: %fMB/sec\n",
+                printf("Client #%d took %ldusec. Bytes read: %d. Throughput: %fMB/s\n",
                     i, timeDiff, time_list[i].bytes_read, single_client_throughput);
                 printf("---Avg. time: %ldusec, Avg. throughput: %fMB/sec\n", total_time/total_finished, total_throughput/total_finished);
             }
