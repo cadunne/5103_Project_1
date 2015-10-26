@@ -8,9 +8,8 @@ Unsorted:
 
 EVERYONE:
 -Change code so that we can measure “throughput”! 
-	-Connor idea: In my implementation, I have an array that has (start, end) times
-	-Could make it (start, end, size), and add to ‘size’ after each read!
-	-Not sure how you two are doing timing, but if you like this you can steal
+	-NOTE: Connor has implemented this in his (sort of - see Question below), feel free to check out
+	-See if you can answer the QUESTION at the bottom of this TODO list before implementing
 -When done changing code, test to make sure it compiles, runs with no errors basically all the time.
 -Write a paragraph or two each about the ‘flow of control’, changing between OS and user… based on syscalls. Shouldn't be too difficult with some googling around.
 
@@ -31,3 +30,22 @@ Karel
 -Address (or not, if it doesn’t need to be) the issue of asychronity in reading. If the prev. bullet (timing) works, then you can probably skip this
 -Make it so that running 10,000 threads works and never crashes. The risk of a single crash is potentially pretty bad
 	-If you figure this out soon, let Connor know!
+	
+	
+	
+	
+QUESTIONS:
+-Throughput ... is it just the average of each client's (bytes_read/time_to_finish)?
+    -If not, what is it?
+    -In my code, I get way worse throughut for larger files, and way better for smaller. Compare 60clients 5MB to 60clients 5KB.
+    
+    
+CHANGELOG:
+1:18pm - Connor
+-Added QUESTIONS
+-Did Throughput (see my code for how I did it, not 100% sure if right)
+
+
+
+
+
