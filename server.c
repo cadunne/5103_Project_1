@@ -462,33 +462,27 @@ int polling_impl_read() {
     return 0;
 }
 
-
-int close_connection(int clientsockfd){
-    // Close socket
-    int closeValue = close(clientsockfd);
-    if(closeValue == -1) {
-        perror("Error closing client socket: ");
-    }
-    fprintf(stderr, "Request completed, client connection %d closed.\n", clientsockfd);
-
-    return 0;
-}
-
 int handle_client(int clientsockfd) {
-    //Read data from client 1KB at a time
-    char buffer[1024];
-    int readbytes; 
+    //Read data from client 10KB at a time
+    //char buffer[4096];
+    char buffer[1048576];
+    int readbytes, i, closeValue;
 
-    // Initial read
-    if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
-        fprintf(stderr, "Read from client failed.\n");  
-    }
+    // Read 1KB ten times or until finished
+    //for(i=0; i<10; i++) {
+        if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
+            fprintf(stderr, "Read from client failed.\n"); 
+            readbytes = 0; 
+        }
 
-    if (readbytes == 0) {
-        close_connection(clientsockfd);
-        return -1;
-    }
-
+        if (readbytes == 0) {
+            closeValue = close(clientsockfd);
+            if(closeValue == -1) {
+                perror("Error closing client socket\n");
+            }
+            return -1;
+        }
+    //}
     return 0;
 }
 
@@ -499,7 +493,7 @@ int select_impl() {
     int threadno = 0;
     fd_set readFDs;
     fd_set masterFDs;
-    int i, j, maxSocket, ready, newClient, clientAction;
+    int i, maxSocket, ready, newClient, clientAction;
 
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
@@ -522,17 +516,28 @@ int select_impl() {
         exit(1);
     }
 
-    fprintf(stderr, "Opened socket and bound to port %d.\n", port);
+    //fprintf(stderr, "Opened socket and bound to port %d.\n", port);
 
-    // Listen on port
-    listen(sockfd, 10);
+    // Listen on port --- supposedly 128 is the max
+    listen(sockfd, 128);
 
+    // Set up for file descriptors
     FD_ZERO(&masterFDs);
     FD_ZERO(&readFDs);
     FD_SET(sockfd, &masterFDs);
     maxSocket = sockfd + 1;
 
-    fprintf(stderr, "Main Socket = %d\n", sockfd);
+    // Timing
+    struct timeval starttime;
+    struct timeval endtime;
+    gettimeofday(&starttime, NULL);
+    gettimeofday(&endtime, NULL);
+
+    // Number of open file desciptors
+    int maxOpenFDs = 256;
+    int openFDs = 4;
+
+    //fprintf(stderr, "Main Socket = %d\n", sockfd);
 
     while(1) {
 
@@ -544,27 +549,40 @@ int select_impl() {
             fprintf(stderr, "Error in Select()\n", NULL);
         }
 
-        for(i = 0; i<maxSocket; i++) {
+        for(i = (sockfd+1); i<(maxSocket+1); i++) {
+            // Client reading
             if(FD_ISSET( i, &readFDs)) {
-                if(i == sockfd){
-                    //Accept new connection and add to fd_set
-                    newClient = accept(sockfd, (struct sockaddr *) &client, (socklen_t *) &client_len);
+                clientAction = handle_client(i);
 
-                    if(newClient == -1){
-                        perror("Server error in accept");
-                    }
-                    FD_SET(newClient, &masterFDs);
-                    if((newClient + 1) > maxSocket) {
-                        maxSocket = newClient + 1;
-                    }
-                    fprintf(stderr, "Adding new client sockfd = %d\n", newClient);
-                } else{
-                    clientAction = handle_client(i);
-                    if(clientAction == -1) {
-                        FD_CLR(i, &readFDs);
-                        FD_CLR(i, &masterFDs);
-                    }
+                if(clientAction == -1) {
+                    // Client is finished remove
+                    gettimeofday(&endtime, NULL);
+                    FD_CLR(i, &masterFDs);
+                    openFDs--;
                 }
+            }
+        }
+
+       if(FD_ISSET( sockfd, &readFDs)) {
+            // Check if max file desciptor limit has been reached
+            if (openFDs < maxOpenFDs) {
+                // Accept new connection and add to FD_SET
+                newClient = accept(sockfd, (struct sockaddr *) &client, (socklen_t *) &client_len);
+
+                if(newClient == -1){
+                    perror("Server error in accept");
+                }
+
+                gettimeofday(&starttime, NULL);
+                FD_SET(newClient, &masterFDs);
+                openFDs++;
+
+                if((newClient + 1) > maxSocket) {
+                    maxSocket = newClient + 1;
+                }
+                //fprintf(stderr, "Adding new client sockfd = %d\n", newClient);
+            } else {
+                //fprintf(stderr, "\n********TOO MANY FDS OPEN************\n\n");
             }
         }
     }
