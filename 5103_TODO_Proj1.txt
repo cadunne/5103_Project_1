@@ -6,6 +6,7 @@ Unsorted:
 	data for our writeup.. this will make the writeup easier
 -Do the writeup (at the end .. ?)
 
+
 EVERYONE:
 -Change code so that we can measure “throughput”! 
 	-NOTE: Connor has implemented this in his (sort of - see Question below), feel free to check out
@@ -17,8 +18,8 @@ EVERYONE:
 
 Connor:
 -keep organizing todos etc (this is a decent amount of work)
--Check if caesar works, follow up w/ Jane/Karel if not and make a new TODO
--Finish 10k threads (waiting for Karel)
+-AWAITING REPLY: Kwangsung, seeing if we can ignore cselabs
+-AWAITING REPLY: Finish 10k threads (Karel)
 
 Jane:
 -Fix timing (feel free to copy/paste some of Connor’s code)
@@ -51,7 +52,10 @@ CHANGELOG:
 -Added QUESTIONS
 -Did Throughput (see my code for how I did it, not 100% sure if right)
 
-
+2:53pm - Connor
+-Various bug fixing
+-Spent about an hour trying to get caesar to work. I can log in and compile, but can't do http requests to it. 
+    -Asked Kwangsung if we can just not do it, waiting for his response
 
 
 
