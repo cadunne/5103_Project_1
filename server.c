@@ -26,7 +26,7 @@
 #include <sys/time.h>
 #include <aio.h>
 
-#define BUF_SIZE 1024
+#define BUF_SIZE 1024 *2
 
 int will_aio_read;
 int port;
@@ -174,6 +174,7 @@ int polling_impl() {
     int fd;
     struct aiocb aiocb;
     struct aiocb emptyAiocb;    
+    struct aiocb *aiocbp;
     int i = 0;
     
     char buf2[BUF_SIZE];
@@ -216,14 +217,14 @@ int polling_impl() {
 
 
     while(1) {
-//        sleep(1);
-        usleep(100000);
+        //sleep(1);
+        //usleep(100000);
 
         //STAGE 1: Accept / Connect if possible
         clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *) &client_len);
         
         if(clientsockfd < 0){
-            printf("---Nothing here\n");
+            //printf("---Nothing here\n");
             //nothing was there (or error)
         }
         else{
@@ -245,23 +246,24 @@ int polling_impl() {
 
             //add to the array
             aio_list[aio_count] = aiocb;
-            aio_count++;
 
             //start download
-            if(aio_read(&aiocb) != 0) { printf("Error with aio_read\n"); }
+            if(aio_read(&aio_list[aio_count]) != 0) { printf("Error with aio_read\n"); }
+            
+            aio_count++;
         }
 
         //STAGE 2: Iterate through aiocb's, see if any have completed
         for(i = 0; i < aio_count; i++){
-            aiocb = aio_list[i];
+            aiocbp = &aio_list[i];
             if (completed[i] == 1){
                 //already completed
                 continue;
             }
             
-            printf("Fildes: %d, aio_count: %d, i: %d\n", aiocb.aio_fildes, aio_count, i);
+            printf("Fildes: %d, aio_count: %d, i: %d\n", aiocbp->aio_fildes, aio_count, i);
 
-            int err = aio_error(&aiocb);
+            int err = aio_error(aiocbp);
 
 
             if (err != 0 && err != EINPROGRESS) {
@@ -275,17 +277,18 @@ int polling_impl() {
             
             else{
                 //no error, ready to return!
-                ret = aio_return(&aiocb);
+                ret = aio_return(aiocbp);
                 
                 if (ret < 0) {
                   printf("Error at aio_return() : %s\n", strerror(errno));
                   printf("##Ret val: %d, nbytes: %d\n", ret, aiocb.aio_nbytes);
-                  close(aiocb.aio_fildes);
+                  close(aiocbp->aio_fildes);
                   exit(0); 
                 }
             
-                else if (ret > 0) {
-                    printf("Still reading ...\n");
+                else if (ret > 0){
+                    printf("...Still reading, retval = %d\n", ret);
+                    aio_read(aiocbp);
                 }
 
                 else{
@@ -294,9 +297,9 @@ int polling_impl() {
                     //stop timer?
                     //cleanup
                     printf ("SUCCESS on %d\n", i);
-                    printf("z### buf # %d equals %p\n", aio_count, aiocb.aio_buf);                                   
+
                     //free((void*)aiocb.aio_buf);
-                    close(aiocb.aio_fildes);
+                    close(aiocbp->aio_fildes);
 
 
                     completed[i] = 1;
