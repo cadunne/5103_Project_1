@@ -51,6 +51,7 @@ typedef struct {
 typedef struct time_tuple{
     struct timeval start;
     struct timeval end;
+    int bytes_read;
 } time_tuple;
 
 struct sockaddr_in server;
@@ -181,6 +182,7 @@ int polling_impl_aio() {
     int i = 0;
     int total_finished = 0; //for calculating average time
     suseconds_t total_time = 0.0; //for caluclating average time
+    double total_throughput = 0.0;
     
     char buf2[BUF_SIZE];
 
@@ -290,6 +292,7 @@ int polling_impl_aio() {
                 else if (ret > 0){
                     //Partially finished; read next chunk into buffer
                     //printf("...Still reading, retval = %d\n", ret);
+                    time_list[i].bytes_read += ret;
                     aio_read(aiocbp);
                 }
 
@@ -301,7 +304,7 @@ int polling_impl_aio() {
                     close(aiocbp->aio_fildes);                    
                     completed[i] = 1;
                     
-                    //timing:
+                    //timing and throughput:
                     gettimeofday(&(time_list[i].end), NULL);
                     total_finished++;
                     
@@ -309,10 +312,14 @@ int polling_impl_aio() {
                     suseconds_t endDouble = (time_list[i].end.tv_sec * 1000000 + time_list[i].end.tv_usec);
                     suseconds_t timeDiff = endDouble - startDouble;
                     
+                    double single_client_throughput = (double)time_list[i].bytes_read / timeDiff * (1000000.0 / (1024*1024));    
+                    
                     total_time += timeDiff;
+                    total_throughput += single_client_throughput;
                     
-                    printf("Client #%d took %ldusec to finish. New avg. time: %ldusec\n", i, timeDiff, total_time/total_finished);
-                    
+                    printf("Client #%d took %ldusec to finish. Bytes read: %d. Throughput: %fMB/sec\n",
+                        i, timeDiff, time_list[i].bytes_read, single_client_throughput);
+                    printf("---Avg. time: %ldusec, Avg. throughput: %fMB/sec\n", total_time/total_finished, total_throughput/total_finished);
                 }
             }
         }
@@ -330,6 +337,7 @@ int polling_impl_read() {
     int i = 0;
     int total_finished = 0; //for calculating average time
     suseconds_t total_time = 0.0; //for caluclating average time
+    double total_throughput = 0.0;
     
     char buf2[BUF_SIZE];
 
@@ -372,7 +380,8 @@ int polling_impl_read() {
         completed[i] = 0;
         time_list[i].start.tv_sec = 0;
         time_list[i].end.tv_sec = 0;
-    }
+        time_list[i].bytes_read = 0;
+        }
     
     while(1) {
     
@@ -412,7 +421,12 @@ int polling_impl_read() {
             
             //start download
             if(read(aiocbp->aio_fildes, aiocbp->aio_buf, aiocbp->aio_nbytes) != 0) {
-                printf("Error with aio_read, %d\n", (errno));
+                if(errno == 11){
+                    //no problem, 'EAGAIN'
+                }
+                else{
+                    printf("Error with aio_read, %d\n", (errno));
+                }
             }
             
         }
@@ -435,7 +449,8 @@ int polling_impl_read() {
             }
             else if (status > 0){
                 //Partially finished; read next chunk into buffer
-                read(aiocbp->aio_fildes, aiocbp->aio_buf, aiocbp->aio_nbytes);
+                    time_list[i].bytes_read += status;
+                    read(aiocbp->aio_fildes, aiocbp->aio_buf, aiocbp->aio_nbytes);
             }
             else{
                 //Read totally finished
@@ -453,9 +468,14 @@ int polling_impl_read() {
                 suseconds_t endDouble = (time_list[i].end.tv_sec * 1000000 + time_list[i].end.tv_usec);
                 suseconds_t timeDiff = endDouble - startDouble;
                 
+                double single_client_throughput = (double)time_list[i].bytes_read / timeDiff * (1000000.0 / (1024*1024));    
+                    
                 total_time += timeDiff;
+                total_throughput += single_client_throughput;
                 
-                printf("Client #%d took %ldusec to finish. New avg. time: %ldusec\n", i, timeDiff, total_time/total_finished);
+                printf("Client #%d took %ldusec to finish. Bytes read: %d. Throughput: %fMB/sec\n",
+                    i, timeDiff, time_list[i].bytes_read, single_client_throughput);
+                printf("---Avg. time: %ldusec, Avg. throughput: %fMB/sec\n", total_time/total_finished, total_throughput/total_finished);
             }
         }
     }
