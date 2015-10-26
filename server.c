@@ -339,7 +339,9 @@ int polling_impl_read() {
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
     //make socker non-blocking, for 'accept'
-    fcntl(sockfd, F_SETFL, O_NONBLOCK);
+    
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    fcntl(sockfd, F_SETFL,  flags | O_NONBLOCK);
 
     client_len = sizeof(client); 
 
@@ -360,7 +362,7 @@ int polling_impl_read() {
 
     //Setup aio array, time array, completion array
     int aio_count = 0;
-    int ret, err;
+    int ret, status;
     
     struct aiocb aio_list[AIO_LIST_SIZE];
     struct time_tuple time_list[AIO_LIST_SIZE];
@@ -382,6 +384,9 @@ int polling_impl_read() {
             //no new connections
         }
         else{
+        
+            int flags = fcntl(clientsockfd, F_GETFL, 0);
+            fcntl(clientsockfd, F_SETFL,  flags | O_NONBLOCK);
             //printf("Setting up new clientSockFd: %d\n", clientsockfd);
             
             //Clear buff and struct
@@ -401,9 +406,13 @@ int polling_impl_read() {
                 printf("Too many connections for AIO_LIST_SIZE!");
             }
             
+            
+            aiocbp = &(aio_list[aio_count-1]);
+            
+            
             //start download
-            if(aio_read(&aio_list[aio_count-1]) != 0) {
-                printf("Error with aio_read\n");
+            if(read(aiocbp->aio_fildes, aiocbp->aio_buf, aiocbp->aio_nbytes) != 0) {
+                printf("Error with aio_read, %d\n", (errno));
             }
             
         }
@@ -418,51 +427,35 @@ int polling_impl_read() {
             }
             
             aiocbp = &aio_list[i];
-            err = aio_error(aiocbp);
             
-            if (err != 0 && err != EINPROGRESS) {
-              printf ("Error at aio_error() : %s\n", strerror (err));
-            }
-            
-            else if (err == EINPROGRESS){
+            status = read(aiocbp->aio_fildes, aiocbp->aio_buf, aiocbp->aio_nbytes);
+
+            if (status < 0){
                 //in progress, don't check return
             }
-            
+            else if (status > 0){
+                //Partially finished; read next chunk into buffer
+                read(aiocbp->aio_fildes, aiocbp->aio_buf, aiocbp->aio_nbytes);
+            }
             else{
-                //no error, aio_read is finished
-                ret = aio_return(aiocbp);
+                //Read totally finished
+                //printf ("SUCCESS on %d\n", i);
+                                    
+                //cleanup:
+                close(aiocbp->aio_fildes);                    
+                completed[i] = 1;
                 
-                if (ret < 0) {
-                  printf("Error at aio_return() : %s\n", strerror(errno));
-                }
-            
-                else if (ret > 0){
-                    //Partially finished; read next chunk into buffer
-                    //printf("...Still reading, retval = %d\n", ret);
-                    aio_read(aiocbp);
-                }
-
-                else{
-                    //Read totally finished
-                    //printf ("SUCCESS on %d\n", i);
-                                        
-                    //cleanup:
-                    close(aiocbp->aio_fildes);                    
-                    completed[i] = 1;
-                    
-                    //timing:
-                    gettimeofday(&(time_list[i].end), NULL);
-                    total_finished++;
-                    
-                    suseconds_t startDouble = (time_list[i].start.tv_sec * 1000000 + time_list[i].start.tv_usec);
-                    suseconds_t endDouble = (time_list[i].end.tv_sec * 1000000 + time_list[i].end.tv_usec);
-                    suseconds_t timeDiff = endDouble - startDouble;
-                    
-                    total_time += timeDiff;
-                    
-                    printf("Client #%d took %ldusec to finish. New avg. time: %ldusec\n", i, timeDiff, total_time/total_finished);
-                    
-                }
+                //timing:
+                gettimeofday(&(time_list[i].end), NULL);
+                total_finished++;
+                
+                suseconds_t startDouble = (time_list[i].start.tv_sec * 1000000 + time_list[i].start.tv_usec);
+                suseconds_t endDouble = (time_list[i].end.tv_sec * 1000000 + time_list[i].end.tv_usec);
+                suseconds_t timeDiff = endDouble - startDouble;
+                
+                total_time += timeDiff;
+                
+                printf("Client #%d took %ldusec to finish. New avg. time: %ldusec\n", i, timeDiff, total_time/total_finished);
             }
         }
     }
