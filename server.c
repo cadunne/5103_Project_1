@@ -25,6 +25,7 @@
 #include <dirent.h>
 #include <sys/time.h>
 #include <aio.h>
+#include <limits.h>
 
 #define BUF_SIZE 1024
 #define AIO_LIST_SIZE 1024 * 10
@@ -45,7 +46,6 @@ typedef struct {
 	int clientfd;
 	int threadnum;
 	struct timeval timer;
-  struct timeval start;
 } threadarg;
 
 typedef struct time_tuple{
@@ -62,134 +62,126 @@ float total;
 float totaltime = 0.0;
 long int allread = 0;
 pthread_mutex_t lock;
+pthread_mutex_t number;
 float total_bytes = 0;
 float total_time = 0;
+int num_threads;
 
 // Function that the threads execute
 void *handle_request(void *arg) {
 	
-	// 1KB Buffer to read into 
-	char buffer[BUF_SIZE];
-	int readbytes; 
-	threadarg myarg;
-	myarg = *((threadarg*) arg);
-	int clientfd = myarg.clientfd;
-	int i = myarg.threadnum;
-	int totalbytes;
+    // 1KB Buffer to read into 
+    char buffer[BUF_SIZE];
+    int readbytes; 
+    threadarg myarg;
+    myarg = *((threadarg*) arg);
+    int clientfd = myarg.clientfd;
+    int i = myarg.threadnum;
+    int totalbytes;
 
-	// Timing per thread
-	struct timeval endtime;
-	struct timeval starttime = myarg.timer;
-  struct timeval overall_start = myarg.start;
+    // Timing per thread
+    struct timeval endtime;
+    struct timeval starttime = myarg.timer;
 	
-
-  	// Initial read
-	if ((readbytes = read(clientfd, buffer, sizeof(buffer))) < 0) {
-		fprintf(stderr, "Read from client failed.\n");   	
-	}
-  totalbytes = readbytes;
-
-  	// If there was something left to read, go back for more until none is left
-	while (readbytes > 0) {
-		if ((readbytes = read(clientfd, buffer, sizeof(buffer))) < 0) {
-			fprintf(stderr, "Read from client failed.\n");
-		}	
-    totalbytes += readbytes;
-	}
- 
-  	// Close socket
-    if (close(clientfd) < 0) {
-      perror( "Could not close socket.\n");
+    // Initial read
+    if ((readbytes = read(clientfd, buffer, sizeof(buffer))) < 0) {
+        fprintf(stderr, "Read from client failed.\n");   	
     }
-    
-    clientfd = -1;
+    totalbytes = readbytes;
 
-	// Stop timer
-	gettimeofday(&endtime, NULL);
+    // If there was something left to read, go back for more until none is left
+    while (readbytes > 0) {
+        if ((readbytes = read(clientfd, buffer, sizeof(buffer))) < 0) {
+             fprintf(stderr, "Read from client failed.\n");
+        }	
+        totalbytes += readbytes;
+    }
+ 
+    // Close socket
+    if (close(clientfd) < 0) {
+        perror( "Could not close socket.\n");
+    }
 
-  float thread_time = ((float)(((endtime.tv_sec - starttime.tv_sec)*1000000) + (endtime.tv_usec - starttime.tv_usec))) / 1000000.0;
-  float mb = ((float) totalbytes) / 1048576;
+    // Stop timer
+    gettimeofday(&endtime, NULL);
+
+    float thread_time = ((float)(((endtime.tv_sec - starttime.tv_sec)*1000000) + (endtime.tv_usec - starttime.tv_usec))) / 1000000.0;
+    float mb = ((float) totalbytes) / 1048576;
   
-  pthread_mutex_lock(&lock);
-  total_time += thread_time;
-  total_bytes += mb;
-  float myavg = (float) total_bytes / total_time;
-  pthread_mutex_unlock(&lock);
+    pthread_mutex_lock(&lock);
+    total_time += thread_time;
+    total_bytes += mb;
+    float myavg = total_bytes / total_time;
+    pthread_mutex_unlock(&lock);
   
-  fprintf(stderr, "Thread %d took %f seconds to read %d bytes.\nThread throughput: %f MB/sec\nAvg throughput: %f MB/sec\n", i, thread_time, totalbytes, mb/thread_time, myavg);
+    fprintf(stderr, "Thread %d took %f seconds to read %d bytes.\nThread throughput: %f MB/sec\nAvg throughput: %f MB/sec\n", i, thread_time, totalbytes, mb/thread_time, myavg);
 
-  	// Exit thread
-	pthread_exit(0);
+    // Exit thread
+    pthread_exit(0);
 }
 
 int thread_impl() {
 
-   	int clientsockfd;
-   	struct sockaddr_in client;
-	int threadno = 0;
-	struct timeval total_time;
-  struct timeval orig_start;
-  int openthreads = 0;
+    int clientsockfd;
+    struct sockaddr_in client;
+    int threadno = 0;
+    struct timeval total_time;
 
-    	fprintf(stderr, "This server will use threads to service each new connection.\n");
+    fprintf(stderr, "This server will use threads to service each new connection.\n");
     
-   	    // Create sockaddr object for the server
-    	server.sin_family = AF_INET;
-    	server.sin_addr.s_addr = INADDR_ANY;
-    	server.sin_port = htons(port);
-    	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    // Create sockaddr object for the server
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(port);
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-    	// Open socket
-    	if (sockfd < 0) 
-        	fprintf(stderr, "Error opening socket.\n");
+    // Open socket
+    if (sockfd < 0) 
+        fprintf(stderr, "Error opening socket.\n");
 
-    	// Bind socket to port
-    	if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) < 0) {
-        	fprintf(stderr, "Error binding socket.\n");
-		exit(1);
-    	}	
+    // Bind socket to port
+    if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        fprintf(stderr, "Error binding socket.\n");
+	exit(1);
+    }	
 
-    	fprintf(stderr, "Opened socket and bound to port %d.\n", port);
+    fprintf(stderr, "Opened socket and bound to port %d.\n", port);
     
-    	// Listen on port
-    	listen(sockfd, 124);
+    // Listen on port
+    listen(sockfd, 128);
 
-        int client_len = sizeof(client);    
+    int client_len = sizeof(client);    
 
-    	while ((clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *)&client_len)))
-    	{
-     
-		// Create thread's timer
-		struct timeval thread_timer;
-		gettimeofday(&thread_timer, NULL);
 
-    if (threadno == 0) {
-        orig_start = thread_timer;
+    while ((clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *)&client_len)))
+    {
+	// Create thread's timer
+	struct timeval thread_timer;
+	gettimeofday(&thread_timer, NULL);
+
+	// Create thread object
+	pthread_t client_thread;        
+
+	// Allocate thread arguments
+	threadarg *thread_arg = malloc(sizeof(*thread_arg));
+	thread_arg->clientfd = clientsockfd;
+	thread_arg->threadnum = threadno;
+	thread_arg->timer = thread_timer;      
+
+	// Create and detach threads
+	if (pthread_create(&client_thread, NULL, &handle_request, thread_arg) < 0) {
+	    fprintf(stderr, "Failed to create thread\n");
+       	}
+	num_threads++;
+	fprintf(stderr, "Num_threads: %d\n", num_threads);
+	if (pthread_join(client_thread, NULL) < 0) {
+	    fprintf(stderr, "Failed to join thread.\n");
+	}
+
+	threadno++;
     }
-        	// Create thread object
-        	pthread_t client_thread;        
-
-        	// Allocate thread arguments
-		threadarg *thread_arg = malloc(sizeof(*thread_arg));
-		thread_arg->clientfd = clientsockfd;
-		thread_arg->threadnum = threadno;
-		thread_arg->timer = thread_timer; 
-    thread_arg->start = orig_start;       
-
-        	// Create and detach threads
-        	if (pthread_create(&client_thread, NULL, &handle_request, thread_arg) < 0) {
-            		fprintf(stderr, "Failed to create thread\n");
-       	 	}
-        	if (pthread_join(client_thread, NULL) < 0) {
-            		fprintf(stderr, "Failed to join thread.\n");
-        	}
-
-		threadno++;
-
-    	}
-
-	return 0;
-
+    
+    return 0;
 }
 
 int polling_impl_aio() {
@@ -441,7 +433,7 @@ int polling_impl_read() {
             aio_count++;
 
             if (aio_count > AIO_LIST_SIZE){
-                printf("Too many connections for AIO_LIST_SIZE!");
+                printf("Too many connections for AIO_LIST_SIZE!\n");
             }
             
             
