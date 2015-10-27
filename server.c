@@ -27,7 +27,7 @@
 #include <aio.h>
 
 #define BUF_SIZE 1024
-#define AIO_LIST_SIZE 1024
+#define AIO_LIST_SIZE 1024 * 10
 
 int will_aio_read;
 int port;
@@ -51,6 +51,7 @@ typedef struct {
 typedef struct time_tuple{
     struct timeval start;
     struct timeval end;
+    int bytes_read;
 } time_tuple;
 
 struct sockaddr_in server;
@@ -181,6 +182,7 @@ int polling_impl_aio() {
     int i = 0;
     int total_finished = 0; //for calculating average time
     suseconds_t total_time = 0.0; //for caluclating average time
+    double total_throughput = 0.0;
     
     char buf2[BUF_SIZE];
 
@@ -290,6 +292,7 @@ int polling_impl_aio() {
                 else if (ret > 0){
                     //Partially finished; read next chunk into buffer
                     //printf("...Still reading, retval = %d\n", ret);
+                    time_list[i].bytes_read += ret;
                     aio_read(aiocbp);
                 }
 
@@ -301,7 +304,7 @@ int polling_impl_aio() {
                     close(aiocbp->aio_fildes);                    
                     completed[i] = 1;
                     
-                    //timing:
+                    //timing and throughput:
                     gettimeofday(&(time_list[i].end), NULL);
                     total_finished++;
                     
@@ -309,10 +312,14 @@ int polling_impl_aio() {
                     suseconds_t endDouble = (time_list[i].end.tv_sec * 1000000 + time_list[i].end.tv_usec);
                     suseconds_t timeDiff = endDouble - startDouble;
                     
+                    double single_client_throughput = (double)time_list[i].bytes_read / timeDiff * (1000000.0 / (1024*1024));    
+                    
                     total_time += timeDiff;
+                    total_throughput += single_client_throughput;
                     
-                    printf("Client #%d took %ldusec to finish. New avg. time: %ldusec\n", i, timeDiff, total_time/total_finished);
-                    
+                    printf("Client #%d took %ldusec. Bytes read: %d. Throughput: %fMB/s\n",
+                        i, timeDiff, time_list[i].bytes_read, single_client_throughput);
+                    printf("---Avg. time: %ldusec, Avg. throughput: %fMB/sec\n", total_time/total_finished, total_throughput/total_finished);
                 }
             }
         }
@@ -324,12 +331,14 @@ int polling_impl_read() {
 
     int clientsockfd;
     int client_len;
+    int socks_used = 0;
     struct sockaddr_in client;
     struct aiocb aiocb;
     struct aiocb *aiocbp;
     int i = 0;
     int total_finished = 0; //for calculating average time
     suseconds_t total_time = 0.0; //for caluclating average time
+    double total_throughput = 0.0;
     
     char buf2[BUF_SIZE];
 
@@ -372,18 +381,27 @@ int polling_impl_read() {
         completed[i] = 0;
         time_list[i].start.tv_sec = 0;
         time_list[i].end.tv_sec = 0;
-    }
+        time_list[i].bytes_read = 0;
+        }
     
     while(1) {
-    
         /////////////////////////////////STAGE 1: Accept / Connect / Read if possible///////////////////////////////////////////////////
         
-        clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *) &client_len);
+        //only spawn new sockets if we have some available (capping to 1000)
+        if(socks_used <= 1000){
+            clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *) &client_len);
+        }
+        else{
+            printf("Waiting for socks to open...\n");
+            clientsockfd = -1;
+        }
         
         if(clientsockfd < 0){
             //no new connections
         }
         else{
+            
+            socks_used++;
         
             int flags = fcntl(clientsockfd, F_GETFL, 0);
             fcntl(clientsockfd, F_SETFL,  flags | O_NONBLOCK);
@@ -412,7 +430,12 @@ int polling_impl_read() {
             
             //start download
             if(read(aiocbp->aio_fildes, aiocbp->aio_buf, aiocbp->aio_nbytes) != 0) {
-                printf("Error with aio_read, %d\n", (errno));
+                if(errno == 11){
+                    //no problem, 'EAGAIN'
+                }
+                else{
+                    printf("Error with aio_read, %d\n", (errno));
+                }
             }
             
         }
@@ -435,7 +458,8 @@ int polling_impl_read() {
             }
             else if (status > 0){
                 //Partially finished; read next chunk into buffer
-                read(aiocbp->aio_fildes, aiocbp->aio_buf, aiocbp->aio_nbytes);
+                    time_list[i].bytes_read += status;
+                    read(aiocbp->aio_fildes, aiocbp->aio_buf, aiocbp->aio_nbytes);
             }
             else{
                 //Read totally finished
@@ -444,6 +468,7 @@ int polling_impl_read() {
                 //cleanup:
                 close(aiocbp->aio_fildes);                    
                 completed[i] = 1;
+                socks_used--;
                 
                 //timing:
                 gettimeofday(&(time_list[i].end), NULL);
@@ -453,9 +478,14 @@ int polling_impl_read() {
                 suseconds_t endDouble = (time_list[i].end.tv_sec * 1000000 + time_list[i].end.tv_usec);
                 suseconds_t timeDiff = endDouble - startDouble;
                 
+                double single_client_throughput = (double)time_list[i].bytes_read / timeDiff * (1000000.0 / (1024*1024));    
+                    
                 total_time += timeDiff;
+                total_throughput += single_client_throughput;
                 
-                printf("Client #%d took %ldusec to finish. New avg. time: %ldusec\n", i, timeDiff, total_time/total_finished);
+                printf("Client #%d took %ldusec. Bytes read: %d. Throughput: %fMB/s\n",
+                    i, timeDiff, time_list[i].bytes_read, single_client_throughput);
+                printf("---Avg. time: %ldusec, Avg. throughput: %fMB/sec\n", total_time/total_finished, total_throughput/total_finished);
             }
         }
     }
@@ -463,26 +493,22 @@ int polling_impl_read() {
 }
 
 int handle_client(int clientsockfd) {
-    //Read data from client 10KB at a time
-    //char buffer[4096];
+    //Reading 1MB at a time
     char buffer[1048576];
     int readbytes, i, closeValue;
 
-    // Read 1KB ten times or until finished
-    //for(i=0; i<10; i++) {
-        if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
-            fprintf(stderr, "Read from client failed.\n"); 
-            readbytes = 0; 
-        }
+    if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
+        fprintf(stderr, "Read from client failed.\n"); 
+        readbytes = 0; 
+    }
 
-        if (readbytes == 0) {
-            closeValue = close(clientsockfd);
-            if(closeValue == -1) {
-                perror("Error closing client socket\n");
-            }
-            return -1;
+    if (readbytes == 0) {
+        closeValue = close(clientsockfd);
+        if(closeValue == -1) {
+            perror("Error closing client socket\n");
         }
-    //}
+        return -1;
+    }
     return 0;
 }
 
@@ -500,6 +526,7 @@ int select_impl() {
     server.sin_port = htons(port);
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
+    // Unused timeout for select
     struct timeval timeout;
     timeout.tv_sec = 2;
     timeout.tv_usec = 0;
@@ -518,7 +545,7 @@ int select_impl() {
 
     //fprintf(stderr, "Opened socket and bound to port %d.\n", port);
 
-    // Listen on port --- supposedly 128 is the max
+    // Listen on port --- supposedly 128 is the max for Mac and Linux
     listen(sockfd, 128);
 
     // Set up for file descriptors
@@ -527,14 +554,17 @@ int select_impl() {
     FD_SET(sockfd, &masterFDs);
     maxSocket = sockfd + 1;
 
-    // Timing
+    // Timing connections
     struct timeval starttime;
     struct timeval endtime;
-    gettimeofday(&starttime, NULL);
-    gettimeofday(&endtime, NULL);
+    //Storing start time with FD as index
+    int clientStartTimes[256];
+    //Storing total time for each client connection
+    int numberOfClients = 0;
+    int clientTotalTimes[10000];
 
-    // Number of open file desciptors
-    int maxOpenFDs = 256;
+    // Number of open file desciptors --- max is 256 for Mac and 1024 for Linux
+    int maxOpenFDs = 1024;
     int openFDs = 4;
 
     //fprintf(stderr, "Main Socket = %d\n", sockfd);
@@ -557,6 +587,7 @@ int select_impl() {
                 if(clientAction == -1) {
                     // Client is finished remove
                     gettimeofday(&endtime, NULL);
+                    // calculate diff from start and store in total time array 
                     FD_CLR(i, &masterFDs);
                     openFDs--;
                 }
@@ -574,6 +605,7 @@ int select_impl() {
                 }
 
                 gettimeofday(&starttime, NULL);
+                //Add to start array
                 FD_SET(newClient, &masterFDs);
                 openFDs++;
 

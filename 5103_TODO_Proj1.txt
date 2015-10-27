@@ -1,0 +1,61 @@
+Todo for project:
+
+Unsorted:
+-Change cli.py so that we can run all desired test cases (main new one: random file sizes)
+	-Write up the series of cli.py arguments that we will use to generate the
+	data for our writeup.. this will make the writeup easier
+-Do the writeup (at the end .. ?)
+
+
+EVERYONE:
+-Change code so that we can measure “throughput”! 
+	-NOTE: Connor has implemented this in his (sort of - see Question below), feel free to check out
+	-See if you can answer the QUESTION at the bottom of this TODO list before implementing
+-When done changing code, test to make sure it compiles, runs with no errors basically all the time.
+-Write a paragraph or two each about the ‘flow of control’, changing between OS and user… based on syscalls. Shouldn't be too difficult with some googling around.
+
+
+
+Connor:
+-keep organizing todos etc (this is a decent amount of work)
+-AWAITING REPLY: Kwangsung, seeing if we can ignore cselabs
+-AWAITING REPLY: Finish 10k threads (Karel)
+
+Jane:
+-Fix timing (feel free to copy/paste some of Connor’s code)
+-Get 10,0000 threads (or whatever) working - might mean not making new threads until others have finished.
+
+Karel
+-Implement timing (if you haven’t) and see if you get similar results to us
+	-BENCHMARK: 700,000usec for 30 clients @ 3MB/clients. try diff loads too 
+-Address (or not, if it doesn’t need to be) the issue of asychronity in reading. If the prev. bullet (timing) works, then you can probably skip this
+-Make it so that running 10,000 threads works and never crashes. The risk of a single crash is potentially pretty bad
+	-If you figure this out soon, let Connor know!
+	
+	
+	
+	
+QUESTIONS:
+-Throughput ... is it just the average of each client's (bytes_read/time_to_finish)?
+    -If not, what is it?
+    -Looks to be OK ... https://ay15.moodle.umn.edu/mod/forum/discuss.php?d=120175
+    -In my code, I get way worse throughut for larger files, and way better for smaller. Compare 60clients 5MB to 60clients 5KB.
+-10,000 clients ... this seems to be a problem w/ cli.py opening too many files?
+    -How can we accommodate for this? I put a sleep(1) statement in my code to make the loop slow (only opens a couple ports), and cli.py still bugs out
+    -Might be a network thing ... when I run the client on an ssh, it bugs out much more than if not
+        -https://ay15.moodle.umn.edu/mod/forum/discuss.php?d=130438
+    -Do we need to rewrite cli.py, or parts of it?
+    
+    
+CHANGELOG:
+1:18pm - Connor
+-Added QUESTIONS
+-Did Throughput (see my code for how I did it, not 100% sure if right)
+
+2:53pm - Connor
+-Various bug fixing
+-Spent about an hour trying to get caesar to work. I can log in and compile, but can't do http requests to it. 
+    -Asked Kwangsung if we can just not do it, waiting for his response
+
+
+
