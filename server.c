@@ -518,8 +518,8 @@ int handle_client(int clientsockfd) {
     int readbytes, i, closeValue;
 
     if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
-        fprintf(stderr, "Read from client failed.\n"); 
-        readbytes = 0; 
+        //Client still reading
+        return 0;
     }
 
     if (readbytes == 0) {
@@ -529,7 +529,8 @@ int handle_client(int clientsockfd) {
         }
         return -1;
     }
-    return 0;
+
+    return readbytes;
 }
 
 int select_impl() {
@@ -539,17 +540,13 @@ int select_impl() {
     int threadno = 0;
     fd_set readFDs;
     fd_set masterFDs;
-    int i, maxSocket, ready, newClient, clientAction;
+    int i, maxSocket, ready, newClient, bytesRead, flags;
+
 
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
     server.sin_port = htons(port);
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-    // Unused timeout for select
-    struct timeval timeout;
-    timeout.tv_sec = 2;
-    timeout.tv_usec = 0;
 
     int client_len = sizeof(client); 
 
@@ -563,31 +560,28 @@ int select_impl() {
         exit(1);
     }
 
-    //fprintf(stderr, "Opened socket and bound to port %d.\n", port);
+    fprintf(stderr, "Opened socket and bound to port %d.\n", port);
 
-    // Listen on port --- supposedly 128 is the max for Mac and Linux
+    // Listen on port --- 128 is the max for Linux and Unix
     listen(sockfd, 128);
 
-    // Set up for file descriptors
+    // Set up for file descriptors FD_SETs
     FD_ZERO(&masterFDs);
     FD_ZERO(&readFDs);
     FD_SET(sockfd, &masterFDs);
     maxSocket = sockfd + 1;
 
-    // Timing connections
-    struct timeval starttime;
-    struct timeval endtime;
-    //Storing start time with FD as index
-    int clientStartTimes[256];
-    //Storing total time for each client connection
-    int numberOfClients = 0;
-    int clientTotalTimes[10000];
+    // Storage for timing connections
+    int finishedConnections = 0;
+    struct time_tuple connectionInfo;
+    struct time_tuple fdInfo[1024];
+    suseconds_t total_time = 0.0;
+    double total_throughput = 0.0;
+    int total_written_bytes = 0;
 
-    // Number of open file desciptors --- max is 256 for Mac and 1024 for Linux
+    // Number of open file desciptors --- 1024 is max for Linux and Unix
     int maxOpenFDs = 1024;
     int openFDs = 4;
-
-    //fprintf(stderr, "Main Socket = %d\n", sockfd);
 
     while(1) {
 
@@ -602,14 +596,38 @@ int select_impl() {
         for(i = (sockfd+1); i<(maxSocket+1); i++) {
             // Client reading
             if(FD_ISSET( i, &readFDs)) {
-                clientAction = handle_client(i);
+                bytesRead = handle_client(i);
 
-                if(clientAction == -1) {
-                    // Client is finished remove
-                    gettimeofday(&endtime, NULL);
-                    // calculate diff from start and store in total time array 
+                if(bytesRead == -1) {
+                    // Client is finished remove 
                     FD_CLR(i, &masterFDs);
+
+		            // Get end time
+                    gettimeofday(&fdInfo[i].end, NULL);
                     openFDs--;
+
+                    // Add connection information 
+                    connectionInfo = fdInfo[i];
+                    finishedConnections++;
+
+                    // Print information
+                    suseconds_t startDouble = (connectionInfo.start.tv_sec * 1000000 + connectionInfo.start.tv_usec);
+                    suseconds_t endDouble = (connectionInfo.end.tv_sec * 1000000 + connectionInfo.end.tv_usec);
+                    suseconds_t timeDiff = endDouble - startDouble;
+
+                    double single_client_throughput = (double)connectionInfo.bytes_read / timeDiff * (1000000.0 / (1024*1024));    
+
+                    total_time += timeDiff;
+                    total_throughput += single_client_throughput;
+
+                    printf("Client #%d took %ldusec. Bytes read: %d. Throughput: %fMB/s\n",
+                    finishedConnections, timeDiff, connectionInfo.bytes_read, single_client_throughput);
+                    printf("---Avg. time: %ldusec, Avg. throughput: %fMB/sec\n", total_time/finishedConnections, total_throughput/finishedConnections);
+
+                } else {
+                    // Update bytes read 
+                    fdInfo[i].bytes_read += bytesRead;
+                    total_written_bytes += bytesRead;
                 }
             }
         }
@@ -623,23 +641,26 @@ int select_impl() {
                 if(newClient == -1){
                     perror("Server error in accept");
                 }
+                // Adjust flags
+		        flags = fcntl(newClient, F_GETFL, 0);
+		        fcntl(newClient, F_SETFL,  flags | O_NONBLOCK);
 
-                gettimeofday(&starttime, NULL);
-                //Add to start array
+		        //Get start time
+                gettimeofday(&fdInfo[newClient].start, NULL);
                 FD_SET(newClient, &masterFDs);
                 openFDs++;
 
+                // Clean out connectionInfo
+                fdInfo[newClient].bytes_read = 0;
+
+                // Update maxSocket 
                 if((newClient + 1) > maxSocket) {
                     maxSocket = newClient + 1;
                 }
-                //fprintf(stderr, "Adding new client sockfd = %d\n", newClient);
-            } else {
-                //fprintf(stderr, "\n********TOO MANY FDS OPEN************\n\n");
             }
         }
     }
 
-    fprintf(stderr, "Select\n");
     return 0;
 }
 
