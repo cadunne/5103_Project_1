@@ -5,18 +5,9 @@ import sys
 import os
 import random
 
-open_sockets = 0
-
 def send_data(ip, port, data):
-    global open_sockets
     offset = 0
     sent = 0
-
-    while (open_sockets > 1024):
-        pass
-    
-    if open_sockets < 100: 
-        open_sockets = open_sockets + 1
     
     soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     
@@ -29,23 +20,20 @@ def send_data(ip, port, data):
         if offset == len(data):
             break
 
-    soc.close()
-    open_sockets = open_sockets - 1
-
     return -1
 
 
 def create_threads(num_threads, ip, port, size, vary):
     try:
         thread_list = []
-		
-        if vary:
-            size = random.randrange(1, 10240)
    
         start = time.time()
         for i in range(0, num_threads):
    
             data = ''
+            if vary:
+                size = random.randrange(1, 10240)
+                print 'Size: ' + str(size)
             for i in range(0, size):
                 data = data.ljust(len(data)+1024, str(i%10))  
   
@@ -63,7 +51,6 @@ def create_threads(num_threads, ip, port, size, vary):
         sys.exit(1)
 
 def run_test_cases(test_case):
-    global open_sockets
     size = 0
 
     if test_case is 5:
@@ -89,9 +76,9 @@ def run_test_cases(test_case):
     
     #create_threads(1, ip, port, size, vary)
 
-    #print '10 Threads'
+    print '10 Threads'
 
-    #create_threads(10, ip, port, size, vary)
+    create_threads(10, ip, port, size, vary)
 
     #print '100 Threads'
 
@@ -101,9 +88,9 @@ def run_test_cases(test_case):
 
     #create_threads(1000, ip, port, size, vary)
 
-    print '10000 Threads'
+    #print '10000 Threads'
 
-    create_threads(10000, ip, port, size, vary)
+    #create_threads(10000, ip, port, size, vary)
 
 if __name__ == '__main__':
 
