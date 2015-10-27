@@ -63,8 +63,8 @@ float totaltime = 0.0;
 long int allread = 0;
 pthread_mutex_t lock;
 pthread_mutex_t number;
-float total_bytes = 0;
-float total_time = 0;
+double total_throughput = 0.0;
+suseconds_t total_time = 0.0;
 int num_threads;
 
 // Function that the threads execute
@@ -105,16 +105,22 @@ void *handle_request(void *arg) {
     // Stop timer
     gettimeofday(&endtime, NULL);
 
-    float thread_time = ((float)(((endtime.tv_sec - starttime.tv_sec)*1000000) + (endtime.tv_usec - starttime.tv_usec))) / 1000000.0;
-    float mb = ((float) totalbytes) / 1048576;
-  
+    suseconds_t startDouble = (starttime.tv_sec * 1000000 + starttime.tv_usec);
+    suseconds_t endDouble = (endtime.tv_sec * 1000000 + endtime.tv_usec);
+    suseconds_t timeDiff = endDouble - startDouble;
+                    
+    double single_client_throughput = (double)totalbytes / timeDiff * (1000000.0 / (1024*1024));    
+        
+      
     pthread_mutex_lock(&lock);
-    total_time += thread_time;
-    total_bytes += mb;
-    float myavg = total_bytes / total_time;
-    pthread_mutex_unlock(&lock);
-  
-    fprintf(stderr, "Thread %d took %f seconds to read %d bytes.\nThread throughput: %f MB/sec\nAvg throughput: %f MB/sec\n", i, thread_time, totalbytes, mb/thread_time, myavg);
+    total_time += timeDiff;
+    total_throughput += single_client_throughput;
+    double mytotal_time = total_time;
+    double mytotal_throughput = total_throughput;
+    pthread_mutex_unlock(&lock);            
+                    
+    printf("Client #%d took %ldusec. Bytes read: %d. Throughput: %fMB/s\n", i, timeDiff, totalbytes, single_client_throughput);
+    printf("---Avg. time: %fusec, Avg. throughput: %fMB/sec\n", mytotal_time/i, mytotal_throughput/i);
 
     // Exit thread
     pthread_exit(0);
@@ -173,7 +179,6 @@ int thread_impl() {
 	    fprintf(stderr, "Failed to create thread\n");
        	}
 	num_threads++;
-	fprintf(stderr, "Num_threads: %d\n", num_threads);
 	if (pthread_join(client_thread, NULL) < 0) {
 	    fprintf(stderr, "Failed to join thread.\n");
 	}
