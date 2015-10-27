@@ -502,7 +502,10 @@ int polling_impl_read() {
 int handle_client(int clientsockfd) {
     //Reading 1MB at a time
     char buffer[1048576];
-    int readbytes, i, closeValue;
+    int readbytes, i, closeValue, flags;
+
+    flags = fcntl(clientsockfd, F_GETFL, 0);
+    fcntl(clientsockfd, F_SETFL,  flags | O_NONBLOCK);
 
     if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
         fprintf(stderr, "Read from client failed.\n"); 
@@ -526,7 +529,7 @@ int select_impl() {
     int threadno = 0;
     fd_set readFDs;
     fd_set masterFDs;
-    int i, maxSocket, ready, newClient, clientAction;
+    int i, maxSocket, ready, newClient, clientAction, flags;
 
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
@@ -564,6 +567,8 @@ int select_impl() {
     // Timing connections
     struct timeval starttime;
     struct timeval endtime;
+    struct time_tuple finishedConnections[10000];
+    struct timeval fdStartTimes[1024];
     //Storing start time with FD as index
     int clientStartTimes[256];
     //Storing total time for each client connection
@@ -592,10 +597,10 @@ int select_impl() {
                 clientAction = handle_client(i);
 
                 if(clientAction == -1) {
-                    // Client is finished remove
-                    gettimeofday(&endtime, NULL);
-                    // calculate diff from start and store in total time array 
+                    // Client is finished remove 
                     FD_CLR(i, &masterFDs);
+		    // Get end time
+                    gettimeofday(&fdStartTimes[newClient].end, NULL);
                     openFDs--;
                 }
             }
@@ -611,8 +616,11 @@ int select_impl() {
                     perror("Server error in accept");
                 }
 
-                gettimeofday(&starttime, NULL);
-                //Add to start array
+		flags = fcntl(newClient, F_GETFL, 0);
+		fcntl(newClient, F_SETFL,  flags | O_NONBLOCK);
+
+		//Get start time
+                gettimeofday(&fdStartTimes[newClient].start, NULL);
                 FD_SET(newClient, &masterFDs);
                 openFDs++;
 
