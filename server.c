@@ -32,7 +32,7 @@
 int will_aio_read;
 int port;
 int sockfd;
-
+int openthreads;
 
 typedef struct {
    	short		sin_family;
@@ -62,6 +62,8 @@ float total;
 float totaltime = 0.0;
 long int allread = 0;
 pthread_mutex_t lock;
+float total_bytes = 0;
+float total_time = 0;
 
 // Function that the threads execute
 void *handle_request(void *arg) {
@@ -73,7 +75,7 @@ void *handle_request(void *arg) {
 	myarg = *((threadarg*) arg);
 	int clientfd = myarg.clientfd;
 	int i = myarg.threadnum;
-	long int totalbytes;
+	int totalbytes;
 
 	// Timing per thread
 	struct timeval endtime;
@@ -85,26 +87,36 @@ void *handle_request(void *arg) {
 	if ((readbytes = read(clientfd, buffer, sizeof(buffer))) < 0) {
 		fprintf(stderr, "Read from client failed.\n");   	
 	}
-  totalbytes += (long int) readbytes;
+  totalbytes = readbytes;
 
   	// If there was something left to read, go back for more until none is left
 	while (readbytes > 0) {
 		if ((readbytes = read(clientfd, buffer, sizeof(buffer))) < 0) {
 			fprintf(stderr, "Read from client failed.\n");
 		}	
-    totalbytes += (long int) readbytes;
+    totalbytes += readbytes;
 	}
  
   	// Close socket
-	close(clientfd);
+    if (close(clientfd) < 0) {
+      perror( "Could not close socket.\n");
+    }
+    
+    clientfd = -1;
 
 	// Stop timer
 	gettimeofday(&endtime, NULL);
 
-  float thread_time = ((float)(((endtime.tv_sec - starttime.tv_sec)*1000000) + (endtime.tv_usec - starttime.tv_usec))) / 1000000;
+  float thread_time = ((float)(((endtime.tv_sec - starttime.tv_sec)*1000000) + (endtime.tv_usec - starttime.tv_usec))) / 1000000.0;
   float mb = ((float) totalbytes) / 1048576;
   
-  fprintf(stderr, "Thread %d took %f seconds to read %f MB.\nThread throughput: %f MB/sec\n\n", i, mb, thread_time, mb/thread_time);
+  pthread_mutex_lock(&lock);
+  total_time += thread_time;
+  total_bytes += mb;
+  float myavg = (float) total_bytes / total_time;
+  pthread_mutex_unlock(&lock);
+  
+  fprintf(stderr, "Thread %d took %f seconds to read %d bytes.\nThread throughput: %f MB/sec\nAvg throughput: %f MB/sec\n", i, thread_time, totalbytes, mb/thread_time, myavg);
 
   	// Exit thread
 	pthread_exit(0);
@@ -117,6 +129,7 @@ int thread_impl() {
 	int threadno = 0;
 	struct timeval total_time;
   struct timeval orig_start;
+  int openthreads = 0;
 
     	fprintf(stderr, "This server will use threads to service each new connection.\n");
     
@@ -145,6 +158,7 @@ int thread_impl() {
 
     	while ((clientsockfd = accept(sockfd, (struct sockaddr *) &client, (socklen_t *)&client_len)))
     	{
+     
 		// Create thread's timer
 		struct timeval thread_timer;
 		gettimeofday(&thread_timer, NULL);
@@ -166,9 +180,8 @@ int thread_impl() {
         	if (pthread_create(&client_thread, NULL, &handle_request, thread_arg) < 0) {
             		fprintf(stderr, "Failed to create thread\n");
        	 	}
-
-        	if (pthread_detach(client_thread) < 0) {
-            		fprintf(stderr, "Failed to detach thread.\n");
+        	if (pthread_join(client_thread, NULL) < 0) {
+            		fprintf(stderr, "Failed to join thread.\n");
         	}
 
 		threadno++;
@@ -502,10 +515,7 @@ int polling_impl_read() {
 int handle_client(int clientsockfd) {
     //Reading 1MB at a time
     char buffer[1048576];
-    int readbytes, i, closeValue, flags;
-
-    flags = fcntl(clientsockfd, F_GETFL, 0);
-    fcntl(clientsockfd, F_SETFL,  flags | O_NONBLOCK);
+    int readbytes, i, closeValue;
 
     if ((readbytes = read(clientsockfd, buffer, sizeof(buffer))) < 0) {
         fprintf(stderr, "Read from client failed.\n"); 
@@ -529,7 +539,7 @@ int select_impl() {
     int threadno = 0;
     fd_set readFDs;
     fd_set masterFDs;
-    int i, maxSocket, ready, newClient, clientAction, flags;
+    int i, maxSocket, ready, newClient, clientAction;
 
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
@@ -567,8 +577,6 @@ int select_impl() {
     // Timing connections
     struct timeval starttime;
     struct timeval endtime;
-    struct time_tuple finishedConnections[10000];
-    struct timeval fdStartTimes[1024];
     //Storing start time with FD as index
     int clientStartTimes[256];
     //Storing total time for each client connection
@@ -597,10 +605,10 @@ int select_impl() {
                 clientAction = handle_client(i);
 
                 if(clientAction == -1) {
-                    // Client is finished remove 
+                    // Client is finished remove
+                    gettimeofday(&endtime, NULL);
+                    // calculate diff from start and store in total time array 
                     FD_CLR(i, &masterFDs);
-		    // Get end time
-                    gettimeofday(&fdStartTimes[newClient].end, NULL);
                     openFDs--;
                 }
             }
@@ -616,11 +624,8 @@ int select_impl() {
                     perror("Server error in accept");
                 }
 
-		flags = fcntl(newClient, F_GETFL, 0);
-		fcntl(newClient, F_SETFL,  flags | O_NONBLOCK);
-
-		//Get start time
-                gettimeofday(&fdStartTimes[newClient].start, NULL);
+                gettimeofday(&starttime, NULL);
+                //Add to start array
                 FD_SET(newClient, &masterFDs);
                 openFDs++;
 
