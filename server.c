@@ -65,7 +65,7 @@ pthread_mutex_t lock;
 pthread_mutex_t number;
 double total_throughput = 0.0;
 suseconds_t total_time = 0.0;
-int num_threads;
+int finished;
 
 // Function that the threads execute
 void *handle_request(void *arg) {
@@ -110,17 +110,17 @@ void *handle_request(void *arg) {
     suseconds_t timeDiff = endDouble - startDouble;
                     
     double single_client_throughput = (double)totalbytes / timeDiff * (1000000.0 / (1024*1024));    
-        
-      
+    
     pthread_mutex_lock(&lock);
     total_time += timeDiff;
     total_throughput += single_client_throughput;
     double mytotal_time = total_time;
     double mytotal_throughput = total_throughput;
+    finished++;
     pthread_mutex_unlock(&lock);            
                     
     printf("Client #%d took %ldusec. Bytes read: %d. Throughput: %fMB/s\n", i, timeDiff, totalbytes, single_client_throughput);
-    printf("---Avg. time: %fusec, Avg. throughput: %fMB/sec\n", mytotal_time/i, mytotal_throughput/i);
+    printf("---Avg. time: %fusec, Avg. throughput: %fMB/sec\n", mytotal_time/finished, mytotal_throughput/finished);
 
     // Exit thread
     pthread_exit(0);
@@ -132,6 +132,8 @@ int thread_impl() {
     struct sockaddr_in client;
     int threadno = 0;
     struct timeval total_time;
+    finished = 0;
+    int num_threads = 0;
 
     fprintf(stderr, "This server will use threads to service each new connection.\n");
     
@@ -179,8 +181,8 @@ int thread_impl() {
 	    fprintf(stderr, "Failed to create thread\n");
        	}
 	num_threads++;
-	if (pthread_join(client_thread, NULL) < 0) {
-	    fprintf(stderr, "Failed to join thread.\n");
+	if (pthread_detach(client_thread) < 0) {
+	    fprintf(stderr, "Failed to detach thread.\n");
 	}
 
 	threadno++;
