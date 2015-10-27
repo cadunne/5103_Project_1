@@ -45,7 +45,7 @@ typedef struct {
 	int clientfd;
 	int threadnum;
 	struct timeval timer;
-	struct timeval orig_start;
+  struct timeval start;
 } threadarg;
 
 typedef struct time_tuple{
@@ -59,6 +59,10 @@ struct sockaddr_in server;
 struct timeval start;
 float total;
 
+float totaltime = 0.0;
+long int allread = 0;
+pthread_mutex_t lock;
+
 // Function that the threads execute
 void *handle_request(void *arg) {
 	
@@ -69,36 +73,39 @@ void *handle_request(void *arg) {
 	myarg = *((threadarg*) arg);
 	int clientfd = myarg.clientfd;
 	int i = myarg.threadnum;
-	struct timeval first_start = myarg.orig_start;	
+	long int totalbytes;
 
 	// Timing per thread
 	struct timeval endtime;
 	struct timeval starttime = myarg.timer;
+  struct timeval overall_start = myarg.start;
+	
 
   	// Initial read
 	if ((readbytes = read(clientfd, buffer, sizeof(buffer))) < 0) {
 		fprintf(stderr, "Read from client failed.\n");   	
 	}
-	
+  totalbytes += (long int) readbytes;
+
   	// If there was something left to read, go back for more until none is left
 	while (readbytes > 0) {
 		if ((readbytes = read(clientfd, buffer, sizeof(buffer))) < 0) {
 			fprintf(stderr, "Read from client failed.\n");
 		}	
+    totalbytes += (long int) readbytes;
 	}
  
   	// Close socket
-	//close(clientfd);
+	close(clientfd);
 
 	// Stop timer
 	gettimeofday(&endtime, NULL);
 
-	fprintf(stderr, "Request completed by thread %d.\n Elapsed time: %d microseconds.\nClient connection closed.\n\n", i, (((endtime.tv_sec * 100000) + endtime.tv_usec) - ((starttime.tv_sec * 100000) + starttime.tv_usec)));
+  float thread_time = ((float)(((endtime.tv_sec - starttime.tv_sec)*1000000) + (endtime.tv_usec - starttime.tv_usec))) / 1000000;
+  float mb = ((float) totalbytes) / 1048576;
+  
+  fprintf(stderr, "Thread %d took %f seconds to read %f MB.\nThread throughput: %f MB/sec\n\n", i, mb, thread_time, mb/thread_time);
 
-	if ((i+1) % 10 == 0) {
-		fprintf(stderr, "---------------\nTotal time so far at conclusion of thread %d: %d microseconds.\n---------------\n\n", i,  (((endtime.tv_sec * 100000) + endtime.tv_usec) - ((first_start.tv_sec * 100000) + first_start.tv_usec)));
-	}
-	
   	// Exit thread
 	pthread_exit(0);
 }
@@ -108,7 +115,8 @@ int thread_impl() {
    	int clientsockfd;
    	struct sockaddr_in client;
 	int threadno = 0;
-	struct timeval original_start;
+	struct timeval total_time;
+  struct timeval orig_start;
 
     	fprintf(stderr, "This server will use threads to service each new connection.\n");
     
@@ -131,7 +139,7 @@ int thread_impl() {
     	fprintf(stderr, "Opened socket and bound to port %d.\n", port);
     
     	// Listen on port
-    	listen(sockfd, 5);
+    	listen(sockfd, 124);
 
         int client_len = sizeof(client);    
 
@@ -141,10 +149,9 @@ int thread_impl() {
 		struct timeval thread_timer;
 		gettimeofday(&thread_timer, NULL);
 
-		if (threadno % 100 == 0) {
-			gettimeofday(&original_start, NULL);
-		}
-
+    if (threadno == 0) {
+        orig_start = thread_timer;
+    }
         	// Create thread object
         	pthread_t client_thread;        
 
@@ -152,8 +159,8 @@ int thread_impl() {
 		threadarg *thread_arg = malloc(sizeof(*thread_arg));
 		thread_arg->clientfd = clientsockfd;
 		thread_arg->threadnum = threadno;
-		thread_arg->timer = thread_timer;        
-		thread_arg->orig_start = original_start;
+		thread_arg->timer = thread_timer; 
+    thread_arg->start = orig_start;       
 
         	// Create and detach threads
         	if (pthread_create(&client_thread, NULL, &handle_request, thread_arg) < 0) {
