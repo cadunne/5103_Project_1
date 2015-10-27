@@ -87,15 +87,15 @@ void *handle_request(void *arg) {
 	}
  
   	// Close socket
-	close(clientfd);
+	//close(clientfd);
 
 	// Stop timer
 	gettimeofday(&endtime, NULL);
 
-	fprintf(stderr, "Request completed by thread %d.\n Elapsed time: %d microseconds.\nClient connection closed.\n\n", i, (endtime.tv_usec - starttime.tv_usec));
+	fprintf(stderr, "Request completed by thread %d.\n Elapsed time: %d microseconds.\nClient connection closed.\n\n", i, (((endtime.tv_sec * 100000) + endtime.tv_usec) - ((starttime.tv_sec * 100000) + starttime.tv_usec)));
 
-	if ((i+1) % 5 == 0) {
-		fprintf(stderr, "---------------\nTotal time so far at conclusion of thread %d: %d microseconds.\n---------------\n\n", i,  endtime.tv_usec - first_start.tv_usec);
+	if ((i+1) % 10 == 0) {
+		fprintf(stderr, "---------------\nTotal time so far at conclusion of thread %d: %d microseconds.\n---------------\n\n", i,  (((endtime.tv_sec * 100000) + endtime.tv_usec) - ((first_start.tv_sec * 100000) + first_start.tv_usec)));
 	}
 	
   	// Exit thread
@@ -130,7 +130,7 @@ int thread_impl() {
     	fprintf(stderr, "Opened socket and bound to port %d.\n", port);
     
     	// Listen on port
-    	listen(sockfd, 50);
+    	listen(sockfd, 5);
 
         int client_len = sizeof(client);    
 
